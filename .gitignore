@@ -30,3 +30,8 @@
 *.exe
 *.out
 *.app
+
+
+# Graphs and logs
+*.col
+*.log
