@@ -35,3 +35,4 @@
 # Graphs and logs
 *.col
 *.log
+*.g6
