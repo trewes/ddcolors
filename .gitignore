@@ -36,3 +36,10 @@
 *.col
 *.log
 *.g6
+
+# Other
+.idea
+.xml
+cmake-build-*
+# For now
+Benchmark
