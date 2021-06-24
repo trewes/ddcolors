@@ -83,6 +83,7 @@ DecisionDiagram exact_decision_diagram(const Graph& g, const NeighborList& neigh
     DecisionDiagram  dd;
     dd.resize(g.ncount() + 1);
     int num_nodes = 0;
+    int num_arcs = 0;
 
     StateInfo initial_state;
     for (unsigned int i = 1; i <= g.ncount(); ++i){
@@ -113,6 +114,7 @@ DecisionDiagram exact_decision_diagram(const Graph& g, const NeighborList& neigh
                 } else {
                     u.one_arc = int(one_arc_it - dd[layer + 1].begin());
                 }
+                num_arcs++;
 
                 new_state = u.state_info;
                 new_state.erase(layer + 1);
@@ -124,6 +126,7 @@ DecisionDiagram exact_decision_diagram(const Graph& g, const NeighborList& neigh
                 } else {
                     u.zero_arc = int(zero_arc_it - dd[layer + 1].begin());
                 }
+                num_arcs++;
             }else{
                 auto zero_arc_it = std::find_if(dd[layer + 1].begin(), dd[layer + 1].end(), [&u](const Node& v){return v.state_info == u.state_info;});
                 if(zero_arc_it == dd[layer + 1].end()){
@@ -133,10 +136,12 @@ DecisionDiagram exact_decision_diagram(const Graph& g, const NeighborList& neigh
                 } else {
                     u.zero_arc = int(zero_arc_it - dd[layer + 1].begin());
                 }
+                num_arcs++;
             }
         }
     }
-    std::cout << "Done building the exact decision diagram containing " << num_nodes << " nodes" << std::endl;
+    std::cout << "Done building the exact decision diagram containing " << num_nodes << " nodes, " << num_arcs
+        << " arcs and width " << get_width(dd) << "." << std::endl;
     return dd;
 }
 
@@ -231,7 +236,7 @@ void separate_edge_conflict(DecisionDiagram &dd, const NeighborList &neighbors, 
 
 std::vector<PathLabelConflict>
 detect_edge_conflict(DecisionDiagram dd, const NeighborList &neighbors, double flow_val, Model model,
-                     ConflictResolution find_conflicts) {
+                     ConflictResolution find_conflicts, PathDecomposition path_decomposition) {
     unsigned int n = num_vars(dd);
     std::vector<PathLabelConflict> conflict_info;
     std::vector<double> conflict_flow;
@@ -246,13 +251,14 @@ detect_edge_conflict(DecisionDiagram dd, const NeighborList &neighbors, double f
 
         for (unsigned int i = 0; i < n; i++) {
             int u = path.back();
-            if ((dd[i][u].one_arc != -1) and
+            if ((dd[i][u].one_arc != -1) and (not (path_decomposition == PreferZeroArcs and (dd[i][u].zero_arc_flow >= dd[i][u].one_arc_flow)) ) and
                 ((model == IP and (int(std::round(dd[i][u].one_arc_flow) >= 1))) or
                  (model == LP and dd[i][u].one_arc_flow >= dd[i][u].zero_arc_flow))) {
                 path_min_flow = std::min(path_min_flow, dd[i][u].one_arc_flow);
 
+                bool use_zero_arc_instead = false;
                 if (not path_found_conflict) {
-                    for (auto j_it = selected_vertices.rbegin(); j_it != selected_vertices.rend(); j_it++) {
+                    for (auto j_it = selected_vertices.rbegin(); j_it != selected_vertices.rend(); j_it++) {//TODO what about selected and neighbors?
                         unsigned int j = j_it.operator*();
                         if (neighbors[i].count(j)) {
                             conflict_info.emplace_back(
@@ -263,15 +269,25 @@ detect_edge_conflict(DecisionDiagram dd, const NeighborList &neighbors, double f
                             if (find_conflicts == SingleConflict) {
                                 return conflict_info;
                             }
+                            //check if it's possible to take the 0-arc instead to avoid the conflict
+                            if(dd[i][u].zero_arc_flow >= double_eps and path_decomposition == AvoidConflicts){
+                                path_min_flow = std::min(path_min_flow, dd[i][u].zero_arc_flow);
+                                path.push_back(dd[i][u].zero_arc);
+                                label.push_back(zeroArc);
+                                use_zero_arc_instead = true;
+                                break;
+                            }
                             //otherwise continue but remember we found a conflict on this path already
                             path_found_conflict = true;
                             break;//don't return here but continue to search for conflicts
                         }
                     }
                 }
-                path.push_back(dd[i][u].one_arc);
-                label.push_back(oneArc);
-                selected_vertices.push_back(i + 1);
+                if (not use_zero_arc_instead) {
+                    path.push_back(dd[i][u].one_arc);
+                    label.push_back(oneArc);
+                    selected_vertices.push_back(i + 1);
+                }
             } else {
                 path_min_flow = std::min(path_min_flow, dd[i][u].zero_arc_flow);
                 path.push_back(dd[i][u].zero_arc);
@@ -289,6 +305,10 @@ detect_edge_conflict(DecisionDiagram dd, const NeighborList &neighbors, double f
                 throw std::runtime_error(
                         "Happened that path min flow is larger than 1 in IP case " + std::to_string(path_min_flow));
             }
+        } else if(path_min_flow > 1 + double_eps){
+            //TODO remove throwing here
+            throw std::runtime_error(
+                    "Happened that path min flow is larger than 1 in IP case " + std::to_string(path_min_flow));
         }
 
         if (path_min_flow > 0) {
@@ -348,6 +368,7 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
     for(int layer = 0; layer < n; layer++){
         for(Node &u : dd[layer]){
             int obj = layer ? 0 : 1;
+//            var_type = (layer) ? COLORlp_CONTINUOUS: COLORlp_INTEGER;//TODO test
             //First add one_arc variables and then zero_arc variables. keep this ordering in mind!
             if(u.one_arc != -1) { //bound 1-arcs by 1
                 COLORlp_addcol(flow_lp, 0, (int *) nullptr, (double *) nullptr, obj,
@@ -602,13 +623,15 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
             fesetround(originalRounding);
 
 //            std::cout << "'safe' lower bound is " << std::setprecision(20) << safe_bound << " with appx. dual bound " << dual_obj << " and delta " << delta  << "\nflow value was " << flow_val << std::endl;
-            if(delta > std::pow(10,-8)){
-                std::cout << "Warning: delta is quite big, larger than 10^-8" << std::endl;
+            if(delta > std::pow(10,-6)){
+                std::cout << "Warning: delta is quite big, larger than 10^-6: " << std::setprecision(25) << delta << std::endl;
                 throw std::runtime_error("Delta");
             }
             if(std::ceil(double_safe_bound) != std::ceil(flow_val-std::pow(10,-5))){
-                std::setprecision(25);
-                throw std::runtime_error("ceil of flow_value and double_safe_bound were different: " + std::to_string(flow_val-std::pow(10,-5)) + " and " + std::to_string(double_safe_bound));
+                std::stringstream message;
+                message << std::setprecision(25) << "ceil of flow_value and double_safe_bound were different: " +
+                        std::to_string(flow_val - std::pow(10,-5)) + " and " + std::to_string(double_safe_bound);
+                throw std::runtime_error(message.str());
             }
 //            if(flow_val < safe_bound) {throw std::runtime_error("Not sure of the error, says appx. flow is smaller than 'safe' lower bound");}
         }
@@ -631,11 +654,13 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
 
     COLORlp_free(&flow_lp);
 
-//    if(model == LP) return double_safe_bound;
+    if(model == LP) {
+        return double_safe_bound;
+    }
     return flow_val;
 }
 
-PathLabelConflict conflict_on_longest_path(const DecisionDiagram &dd, const NeighborList &neighbors) {
+void find_longest_path(const DecisionDiagram &dd, Path &path, Label &label) {
     int n = int(dd.size());
     //use that dd is dag and find longest path (longest in regards to 1-arcs) using topological order of the dd
     std::vector< std::vector<int> > prev(n);
@@ -657,10 +682,9 @@ PathLabelConflict conflict_on_longest_path(const DecisionDiagram &dd, const Neig
             }
         }
     }
-
-    Path path;
+    path.clear();
     path.reserve(n);
-    Label label;
+    label.clear();
     label.reserve(n);
 
     int prev_node = 0;
@@ -677,14 +701,21 @@ PathLabelConflict conflict_on_longest_path(const DecisionDiagram &dd, const Neig
 
     std::reverse(path.begin(), path.end());
     std::reverse(label.begin(), label.end());
+}
 
-//    std::cout << path << " and " << label << std::endl;
+PathLabelConflict conflict_on_longest_path(const DecisionDiagram &dd, const NeighborList &neighbors) {
+    Path path;
+    Label label;
+    find_longest_path(dd, path, label);
+
+    //    std::cout << path << " and " << label << std::endl;
 
     //look for a conflict on said longest path
-    for(int j = 1; j < int(path.size()) ; j++){ //this way we find the first smallest conflict, important assumption for Algorithm 1
+    for(int j = 1; j < int(path.size()) ; j++){
         if(not label[j]){
             continue;
         }
+        //iterating this way we find the first smallest conflict, important assumption for Algorithm 1
         for(int i = j-1; i >= 0; i--){
             if(not label[i]){
                 continue;

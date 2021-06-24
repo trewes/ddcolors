@@ -31,7 +31,7 @@ SET(CMAKE_SYSTEM_PROCESSOR arm)
 ADD_EXECUTABLE(${PROJECT_NAME} ${SOURCE_FILES})
 
 
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 ")#-O3 oder -gp
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O3")#-O3 oder -gp
 #SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pedantic -Wall -Wshadow -W  -Wmissing-declarations -Wpointer-arith -Wundef -Wcast-qual -Wcast-align -Wwrite-strings")
 
 
@@ -108,10 +108,23 @@ ENDIF()
 #message make sure you also compiled exactcolors with the right solver
 
 IF(TRUE)
-    SET(SCIP_ROOT_DIR /home/brand/local_opt/scip-6.0.2/installdir/)
+#    SET(SCIP_ROOT_DIR /home/brand/local_opt/scip-6.0.2/installdir/)
+#    SET(SCIP_ROOT_DIR /home/brand/local_opt/scipopt-exact-0.1/scip/install/)
+    SET(SCIP_ROOT_DIR /home/brand/local_opt/scipoptsuite-7.0.1.3/install/)
     FIND_PACKAGE(SCIP REQUIRED)
-    TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PRIVATE ${SCIP_INCLUDE_DIRS})
+    TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PUBLIC ${SCIP_INCLUDE_DIRS})
     TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${SCIP_LIBRARIES})
+    TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${SCIP_LIBRARIES})
+
+    SET(SOME_ROOT_DIR ${SCIP_ROOT_DIR}/../..)
+#    TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PUBLIC ${SOME_ROOT_DIR}/papilo/install/include)
+#    TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PUBLIC ${SOME_ROOT_DIR}/soplex/install/include)
+#    TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PUBLIC ${SOME_ROOT_DIR}/scip/install/include)
+#    TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${SOME_ROOT_DIR}/papilo/install/lib/libclusol.a)
+#    TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${SOME_ROOT_DIR}/soplex/install/lib/libsoplex.a)
+#    TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${SOME_ROOT_DIR}/scip/install/lib/libscip.so)
+#    TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${SOME_ROOT_DIR}/scip/install/lib/libscip.so.7.0)
+
 ENDIF()
 
 

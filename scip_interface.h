@@ -6,14 +6,18 @@
 #include "scip/scip.h"
 #include "scip/scipdefplugins.h"
 #include "scip/pub_misc.h"
+#include "scip/scip_sol.h"
+
 
 
 double compute_flow_solution_SCIP(DecisionDiagram &dd, Model model = IP, int coloring_upper_bound = -1);
 
-double
-validate_flow_solution_SCIP(DecisionDiagram &dd, double flow_value, Model model = IP, int coloring_upper_bound = -1);
+double validate_flow_solution_SCIP(DecisionDiagram &dd, double flow_value, Model model = IP, int coloring_upper_bound = -1);
+
+double validate_flow_solution_SCIPexact(DecisionDiagram &dd, double flow_value, Model model = IP, int coloring_upper_bound = -1);
 
 
+double test();
 
 static const int npoints = 10;
 static const unsigned int randseed = 42;
@@ -78,6 +82,8 @@ SCIP_RETCODE runCircle(void)
     SCIP_CALL( SCIPcreate(&scip) );
     SCIP_CALL( SCIPincludeDefaultPlugins(scip) );
 
+    SCIP_CALL( SCIPsetBoolParam(scip, "exact/enabled", true) );
+
     SCIPinfoMessage(scip, NULL, "\n");
     SCIPinfoMessage(scip, NULL, "*********************************************\n");
     SCIPinfoMessage(scip, NULL, "* Running Smallest Enclosing Circle Problem *\n");
@@ -92,6 +98,7 @@ SCIP_RETCODE runCircle(void)
     SCIPinfoMessage(scip, NULL, "Original problem:\n");
     SCIP_CALL( SCIPprintOrigProblem(scip, NULL, "cip", FALSE) );
 
+    SCIP_CALL( (SCIPwriteOrigProblem(scip, "test_scip.lp", nullptr, FALSE)));
     SCIPinfoMessage(scip, NULL, "\nSolving...\n");
     SCIP_CALL( SCIPsolve(scip) );
 

@@ -11,7 +11,7 @@
 
 #include <iomanip>
 #include <cfenv>
-#pragma STDC FENV_ACCESS ON
+//#pragma STDC FENV_ACCESS ON //unused/has no effect
 
 #include "Graph.h"
 
@@ -80,13 +80,15 @@ void separate_edge_conflict(DecisionDiagram &dd, const NeighborList &neighbors, 
 
 enum Model {IP, LP};
 enum ConflictResolution {SingleConflict, MultipleConflicts, LargestFlowConflict};
+enum PathDecomposition {PreferOneArcs, AvoidConflicts, PreferZeroArcs};
 enum Relaxation {IP_Only, LP_First, Switch_LP_IP};
 std::vector<PathLabelConflict>
 detect_edge_conflict(DecisionDiagram dd, const NeighborList &neighbors, double flow_val, Model model = IP,
-                     ConflictResolution find_conflicts = SingleConflict);
+                     ConflictResolution find_conflicts = SingleConflict, PathDecomposition path_decomposition = PreferOneArcs);
 
 double compute_flow_solution(DecisionDiagram &dd, Model model = IP, int coloring_upper_bound = -1);
 
+void find_longest_path(const DecisionDiagram &dd, Path &path, Label &label);
 PathLabelConflict conflict_on_longest_path(const DecisionDiagram &dd, const NeighborList &neighbors);
 std::vector<PathLabelConflict> experimental_conflict_on_longest_path(const DecisionDiagram &dd, const NeighborList &neighbors);
 
@@ -106,5 +108,13 @@ std::vector<PathLabelConflict> experimental_conflict_on_longest_path(const Decis
 //TODO or, very advanced, keep the same LP/IP instance alive for the whole algorithm but change variables and constraints and solve again
 
 //TODO what a heuristic for the best conflict to choose? or, the best flow to look for (giving the conflicts)!
+
+//TODO check and maybe throw in all cases where we do unsigned int -1. do that quite often
+
+//TODO turn decision diagram into a class, will mae it easier to use options object
+
+//TODO spped up preprocessing / peeling and removing vertices routine
+
+//TODO every 100th or so iteration compute the integer flow for hopefully and probably better primal heuristic results
 
 #endif //DDCOLORS_DECISIONDIAGRAM_H

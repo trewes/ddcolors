@@ -19,17 +19,17 @@ void print_help(){
     std::cout<<"-h|--help               :Prints this help message."<<std::endl;
     std::cout<<"-s|--stats              :Enables output of statistics gathered during the algorithm."<<std::endl;
     std::cout<<"-t|--time               :Enables output of execution time."<<std::endl;
-    std::cout<<"-b|--basic_refinement   :Uses refinement algorithm without primal heuristic or Dsatur bound."<<std::endl;
-    std::cout<<"-e|--exact_compilation  :Uses exact method to compile the decision diagram ."<<std::endl;
-    std::cout<<"-a|--arc_redirection    :Redirects arcs to the most similar node in the next level."<<std::endl;
-    std::cout<<"-d|--dsatur_only        :Only runs Dsatur to get and return upper bound. Warning: algorithm does not return a lower bound."<<std::endl;
-    std::cout<<"-c|--conflicts arg      :Detect and resolve conflicts in a flow solution after chosen method."<<std::endl;
-    std::cout<<"                         s for single conflict, m for multiple conflicts (default), f for conflicts with largest flow."<<std::endl;
+    std::cout<<"-m|--method arg         :Which algorithm is to be run to get the chromatic number: i for iterative refinement (default),"<<std::endl;//b for basic as hidden option
+    std::cout<<"                         e for exact compilation and h for heuristic only (note that this gives only an upper bound)."<<std::endl;
     std::cout<<"-o|--ordering arg       :Option of which vertex ordering is to be used, standard is Dsatur."<<std::endl;
     std::cout<<"                         l for lexicographic, m for max connected degree, d for dsatur ordering (default)."<<std::endl;
     std::cout<<"-r|--relaxation arg     :IP solver relaxation, standard is LP first."<<std::endl;
     std::cout<<"                         i for IP only, l for LP first and then IP (default), s for switching between IP and LP."<<std::endl;
-    std::cout<<"-p|--preprocessing arg  :The number of iterations the longest path preprocessing should be applied, standard is 100."<<std::endl;
+    std::cout<<"-l|--longest_paths arg  :The number of iterations the longest path preprocessing should be applied, standard is 100."<<std::endl;
+    std::cout<<"-p|--preprocessing      :Enables the use of peeling and removing dominated vertices of the graph in a preprocessing step."<<std::endl;
+    std::cout<<"-a|--arc_redirection    :Redirects arcs to the most similar node in the next level."<<std::endl;
+    std::cout<<"-c|--conflicts arg      :Detect and resolve conflicts in a flow solution after chosen method."<<std::endl;
+    std::cout<<"                         s for single conflict, m for multiple conflicts (default), f for conflicts with largest flow."<<std::endl;
 }
 
 #define MAX_PNAME_LEN 128
@@ -102,7 +102,7 @@ int main(int argc, char* argv[]) {
         separate_edge_conflict(dd, nlist, PathLabelConflict({0,0,0}, {oneArc,oneArc,oneArc}, std::make_tuple(1,3)), OriginalArcs);
         print_decision_diagram(dd, false);
         int flow_val = compute_flow_solution(dd);
-        for (auto &plc : detect_edge_conflict(dd, nlist, flow_val, IP, MultipleConflicts)){
+        for (auto &plc : detect_edge_conflict(dd, nlist, flow_val, IP, MultipleConflicts, PreferOneArcs)){
             int j, k;
             std::tie(j, k) = plc.conflict;
             std::cout << "found conflict " << j << ", " << k << std::endl;
@@ -130,7 +130,8 @@ int main(int argc, char* argv[]) {
         print_decision_diagram(dd, false);
         int flow_val = compute_flow_solution(dd);
 
-        std::vector<PathLabelConflict> conflict_info = detect_edge_conflict(dd, nlist, flow_val, IP, MultipleConflicts);
+        std::vector<PathLabelConflict> conflict_info = detect_edge_conflict(dd, nlist, flow_val, IP, MultipleConflicts,
+                                                                            PreferOneArcs);
         if(conflict_info.empty()) {
             std::cout << "Failed to detect any edge conflict with given decision diagram and flow input." << std::endl;
         } else {
@@ -174,7 +175,7 @@ int main(int argc, char* argv[]) {
 
         double flow_value = 1.0;
         std::vector<PathLabelConflict> conflict_info = detect_edge_conflict(dd, nlist, flow_value, IP,
-                                                                            MultipleConflicts);
+                                                                            MultipleConflicts, PreferOneArcs);
         if(conflict_info.empty()) {
             std::cout << "Failed to detect any edge conflict with given decision diagram and flow input." << std::endl;
         } else {
@@ -385,16 +386,25 @@ int main(int argc, char* argv[]) {
         }
     }
 
+
     if(0){
-//        Graph g(4, 3, {1, 3, 3, 4, 4, 2});
-        Graph h("../Graphs/miles1000.col");
-        Permutation perm;
-        int bound = h.dsatur(perm).size();
-//        Graph g = h.perm_graph(perm);
-        DecisionDiagram dd = exact_decision_diagram(h);
-        compute_flow_solution(dd, IP, -1);
-        validate_flow_solution_SCIP(dd, 0, IP, bound);
+        test();
     }
+
+
+    if(0){
+        Graph g(4, 3, {1, 3, 3, 4, 4, 2});
+//        Graph g("../Graphs/mulsol.i.1.col");
+        Permutation perm;
+        int bound = g.max_connected_degree_coloring(perm).size();
+        g = g.perm_graph(perm);
+        DecisionDiagram dd = exact_decision_diagram(g);
+//        compute_flow_solution(dd, IP, -1);
+        compute_flow_solution_SCIP(dd, IP, -1);
+        validate_flow_solution_SCIPexact(dd, 0, IP, -1);
+    }
+
+
 
 
     if(0){
@@ -414,36 +424,127 @@ int main(int argc, char* argv[]) {
 
         Graph g(length+1, edge_list.size()/2, edge_list);
         g.print();
-        Graph h = g.peel_graph(5);
-        h.print();
-        h = g.peel_graph(5);
-        h.print();
-        h = h.peel_graph(5);
-        h.print();
+        g.remove_dominated_vertices();
+        g.print();
+        g.remove_dominated_vertices();
+        g.print();
+
+
+
+//        h = g.peel_graph_ordered(4);
+//        h.print();
+//        h = h.peel_graph_ordered(5);
+//        h.print();
 
     }
 
-    if(1){
+    if(0){
         Graph g("../Graphs/inithx.i.3.col");
+        std::cout << "original: " << g.ncount() << ", " << g.ecount() << std::endl;
         int bound = 30;
         Options opt;
 //        opt.algorithm = Options::ExactCompilation;
 //        opt.vertex_ordering = Graph::Lexicographic;
         opt.num_longest_path_iterations = 0;
 
-        DDColors(g, opt).run();
-        std::cout << g.ncount() << ", " << g.ecount() << std::endl;
-        g = g.peel_graph(bound);
-        std::cout << g.ncount() << ", " << g.ecount() << std::endl;
-        g = g.peel_graph(bound);
-        std::cout << g.ncount() << ", " << g.ecount() << std::endl;
-        g = g.peel_graph(bound);
-        std::cout << g.ncount() << ", " << g.ecount() << std::endl;
+        DDColors(g, opt).preprocessing_graph();
+
+//        DDColors(g, opt).run();
+        g.peel_graph_ordered(bound);
+        g.peel_graph_ordered(bound);
+        g.peel_graph_ordered(bound);
+//        DDColors(g, opt).run();
+        g.peel_graph_ordered(bound);
+//        DDColors(g, opt).run();
+        g.peel_graph_ordered(bound);
         DDColors(g, opt).run();
 
     }
 
-return 0;
+    if(0){
+        Graph g("../Graphs/3-Insertions_5.col");
+
+        std::cout << "original: " << g.ncount() << ", " << g.ecount() << std::endl;
+        int bound = 4;
+
+        unsigned int num_nodes_previous_iteration = 0;
+        while(true){
+            num_nodes_previous_iteration = g.ncount();
+            g.remove_dominated_vertices();
+            g.peel_graph_ordered(bound);
+            if(num_nodes_previous_iteration == g.ncount())
+                break;
+        }
+
+        Options opt;
+//        opt.algorithm = Options::ExactCompilation;
+//        DDColors(g, opt).run();
+    }
+
+    if(0){
+        char const* filename = (0) ? "../Graphs/queen9_9.col" : argv[1];
+//        Graph g("../Graphs/zeroin.i.3.col");
+        Graph g(filename);
+
+        Options opt;
+        opt.multiple_dsatur = 1;
+        opt.algorithm = Options::HeuristicOnly;
+
+        std::cout << "Heuristic found coloring of size " <<  DDColors(g, opt).run() << std::endl;
+    }
+
+    if(0){
+        char const* filename = (1) ? "../Graphs/queen9_9.col" : argv[1];
+//        Graph g("../Graphs/zeroin.i.3.col");
+        Graph g(filename);
+
+        Permutation perm;
+        Coloring c;
+
+        c = g.dsatur(perm);
+        g = g.perm_graph(perm_inverse(perm));
+        DecisionDiagram dd = exact_decision_diagram(g);
+        std::cout << num_nodes(dd) << " nodes, " << num_arcs(dd) << " arcs, " << get_width(dd) << " width. dsatur " << c.size() << std::endl;
+
+        c = g.dsatur_original(perm);
+        g = g.perm_graph(perm_inverse(perm));
+        dd = exact_decision_diagram(g);
+        std::cout << num_nodes(dd) << " nodes, " << num_arcs(dd) << " arcs, " << get_width(dd) << " width. dsatur_original " << c.size() << std::endl;
+
+        c = g.max_connected_degree_coloring(perm);
+        g = g.perm_graph(perm_inverse(perm));
+        dd = exact_decision_diagram(g);
+        std::cout << num_nodes(dd) << " nodes, " << num_arcs(dd) << " arcs, " << get_width(dd) << " width. max_connected_degree_coloring " << c.size() << std::endl;
+
+        g = Graph(filename);
+        dd = exact_decision_diagram(g);
+        std::cout << num_nodes(dd) << " nodes, " << num_arcs(dd) << " arcs, " << get_width(dd) << " width. lexicographic" << std::endl;
+    }
+
+    if(0){
+        char const* filename = (0) ? "../Graphs/queen9_9.col" : argv[2];
+        Graph g(filename);
+        int hint = std::atoi(argv[1]);
+        std::cout << hint << std::endl;
+
+        DDColors ddc(g);
+        ddc.preprocessing_graph(hint);
+    }
+
+    if(0) {
+        char const *filename = (0) ? "../Graphs/queen9_9.col" : argv[1];
+        Graph g(filename);
+        NeighborList neighbors = g.get_neighbor_list();
+        DecisionDiagram dd = exact_decision_diagram(g);
+        double ip_flow = compute_flow_solution(dd, IP);//TODO does upper bound make it better?
+        int colorsize = int(DDColors::primal_heuristic(dd, neighbors).size());
+
+        std::cout << "flow bound " << ip_flow << " vs color bound " << colorsize << std::endl;
+
+
+    }
+
+//return 0;
     Options dd_settings{};
 
     int opt;
@@ -452,17 +553,16 @@ return 0;
             {"help", no_argument, nullptr, 'h'},
             {"stats", no_argument, nullptr, 's'},
             {"time", no_argument, nullptr, 't'},
-            {"basic_refinement", no_argument, nullptr, 'b'},
-            {"exact_compilation", no_argument, nullptr, 'e'},
             {"arc_redirection", no_argument, nullptr, 'a'},
-            {"dsatur_only", no_argument, nullptr, 'd'},
+            {"preprocessing", no_argument, nullptr, 'p'},
+            {"method", required_argument, nullptr, 'm'},
             {"conflicts", required_argument, nullptr, 'c'},
             {"ordering", required_argument, nullptr, 'o'},
             {"relaxation", required_argument, nullptr, 'r'},
-            {"preprocessing", required_argument, nullptr, 'p'},
+            {"longest_paths", required_argument, nullptr, 'l'},
     };
 
-    while ((opt = getopt_long(argc, argv, "hstbeadc:o:r:p:", long_options, &option_index)) != -1){
+    while ((opt = getopt_long(argc, argv, "hstapc:o:r:l:m:", long_options, &option_index)) != -1){
         switch (opt) {
 
             default:
@@ -478,18 +578,27 @@ return 0;
             case 't':
                 dd_settings.print_time = true;
                 break;
-            case 'b':
-                if(dd_settings.algorithm == Options::Algorithm::ExactCompilation) break; //don't override exact compilation
-                dd_settings.algorithm = Options::Algorithm::BasicRefinement;
-                break;
-            case 'e':
-                dd_settings.algorithm = Options::Algorithm::ExactCompilation;
+            case 'm':
+                if(*optarg=='b'){
+                    dd_settings.algorithm = Options::BasicRefinement;
+                }
+                else if(*optarg=='i'){
+                    dd_settings.algorithm = Options::HeuristicRefinement;
+                }
+                else if(*optarg=='e'){
+                    dd_settings.algorithm = Options::ExactCompilation;
+                }
+                else if(*optarg=='h'){
+                    dd_settings.algorithm = Options::HeuristicOnly;
+                }
+                else{
+                    std::cout<<"The method to compute the chromatic number was not correctly specified."<<std::endl;
+                    std::cout<<"Program failed."<<std::endl;
+                    return -1;
+                }
                 break;
             case 'a':
                 dd_settings.redirect_arcs = RedirectArcs::MostSimilarNode;
-                break;
-            case 'd':
-                dd_settings.dsatur_only = true;
                 break;
             case 'c':
                 if(*optarg=='s'){
@@ -540,14 +649,17 @@ return 0;
                     return -1;
                 }
                 break;
-            case 'p':
+            case 'l':
                 dd_settings.num_longest_path_iterations = std::stoi(optarg, nullptr, 10);
+                break;
+            case 'p':
+                dd_settings.preprocess_graph = true;
                 break;
         }
     }
 
     //optind is the index in argv after going through all the options, now the arguments are given
-    char const* filename = (argc>1) ? argv[optind] : "../Graphs/mulsol.i.5.col";
+    char const* filename = (argc>1) ? argv[optind] : "../Graphs/r250.1c.col";
 
     try{
         program_header(argc, argv);
@@ -557,8 +669,8 @@ return 0;
 
         int chromatic_number = ddcolors.run();
 
-        if(dd_settings.dsatur_only){
-            std::cout<<"Dsatur bound of input graph is "<<chromatic_number <<std::endl;
+        if(dd_settings.algorithm == Options::HeuristicOnly){
+            std::cout<<"Heuristic bound of input graph is "<<chromatic_number <<std::endl;
         } else
         std::cout<<"Chromatic number of input graph is "<<chromatic_number <<std::endl;
     }

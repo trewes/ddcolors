@@ -3,16 +3,23 @@
 
 #include <vector>
 #include <set>
+#include <unordered_map>
 #include <chrono>
 #include <stdexcept>
 #include <numeric>
 
+#include "Graph.h"
 #include "DecisionDiagram.h"
 #include "scip_interface.h"
+
+extern "C" {
+#include "color.h"
+}
 
 typedef std::set<unsigned int> ColorClass;
 typedef std::vector<ColorClass> Coloring;
 
+std::ostream& operator<<(std::ostream& s, std::chrono::duration<double> duration);
 
 struct Statistics{
     size_t decision_diagram_size = 0;
@@ -23,8 +30,10 @@ struct Statistics{
     unsigned int num_lp_solved = 0;
     unsigned int num_ip_solved = 0;
     std::chrono::steady_clock::time_point start_time;
-    std::chrono::duration<double> execution_time;
     //time is excluding initialisation of graph but including finding vertex ordering and dsatur bound
+    std::chrono::duration<double> execution_time;
+    std::chrono::duration<double> tt_lower_bound;
+    std::chrono::duration<double> tt_upper_bound;
     void print() const;
     static void pretty_time(std::chrono::duration<double> duration);
     //TODO maybe add stats for how much time was spent where
@@ -38,18 +47,24 @@ struct Statistics{
 
 
 struct Options{
-    enum Algorithm {BasicRefinement, HeuristicRefinement, ExactCompilation};
+    enum Algorithm {BasicRefinement, HeuristicRefinement, ExactCompilation, HeuristicOnly};
     Algorithm algorithm = HeuristicRefinement;
     RedirectArcs redirect_arcs = OriginalArcs;
     ConflictResolution find_conflicts = MultipleConflicts;
+    //vertex ordering also specifies which heuristic is used for the upper bound
     Graph::OrderType vertex_ordering = Graph::Dsatur;
     Relaxation relaxation = LP_First;
     int num_longest_path_iterations = 100;
     bool print_stats = true;
     bool print_time = true;
-    bool dsatur_only = false;
+    bool preprocess_graph = false;
+    PathDecomposition path_decomposition = AvoidConflicts;
+    bool use_upperbound_in_IP = false;
+    //TODO mention this in BA
+    int multiple_dsatur = 1;//TODO use this or not
 };
 
+//TODO maybe start timing when calling run() and not in initialisation
 class DDColors{
 public:
     DDColors(const char *filename, Options options = Options());
@@ -62,6 +77,7 @@ public:
 
     //pass dd here as a copy so we keep flow on original dd
     Coloring primal_heuristic(DecisionDiagram dd);
+    static Coloring primal_heuristic(DecisionDiagram dd, const NeighborList& neighbors);
 
     int heuristic_iterative_refinement();
 
@@ -75,18 +91,34 @@ public:
     std::pair<std::vector<PathLabelConflict>, int>
     find_conflict_and_primal_heuristic(DecisionDiagram &dd, double flow_val, Model model = IP);
 
+    void preprocessing_graph(int lower_bound = 0);
+
 private:
+    //helper function to call when initilaising a new DDColors object
+    void initialise();
+
+    //handle updating of information when a new better bound is found
+    void update_lower_bound(int flow_bound);
+    void update_upper_bound(int coloring_size);
+    void print_bounds() const;
+
+
     Graph graph;
     NeighborList neighbors;
     const Options opt;
     Statistics stats;
-    int dsatur_bound = std::numeric_limits<int>::max();
+
+    int lower_bound = 0;
+    int upper_bound = std::numeric_limits<int>::max();
+    int heuristic_bound = std::numeric_limits<int>::max();
+    int coloring_bound = std::numeric_limits<int>::max();
 
     void longest_path_refinement(DecisionDiagram &dd);
 
-    void preprocessing_graph();
 };
 
+//helper function to try and swap colors during last phase of the primal heuristic
+bool heuristic_try_color_swap(Vertex vertex, const NeighborList &neighbors, Coloring &coloring);
 
 
 #endif //DDCOLORS_DDCOLORS_H
