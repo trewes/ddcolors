@@ -33,11 +33,6 @@ Permutation perm_inverse(const Permutation& perm);
 
 
 class Graph{
-
-    struct GraphOpt{
-        bool random_tie_breaks = false;
-    };
-
 public:
     Graph(unsigned int ncount, unsigned int ecount, std::vector<Vertex> elist);
     Graph(const char* filename);
@@ -50,6 +45,7 @@ public:
     std::vector<Vertex> elist() const;
     std::vector<int> shifted_elist() const; //used as helper function for clique algorithm from exactcolors
     void print() const;
+    void use_random_tiebreaks(){random_tiebreaks = true;}
 private:
     //data fields to store the graph
     unsigned int _ncount;
@@ -61,29 +57,32 @@ private:
     //this function of reading in the graph6 format was taken from treedecomposition.com
     void read_graph6_string(std::string g6_string);
 
-    //TODO pointer to options struct which can be set from the outside
-    GraphOpt* opt = new GraphOpt;
+    //setting use randomness during the coloring heuristic when breaking a tie
+    bool random_tiebreaks = false;
 public:
     enum OrderType {Lexicographic, Dsatur, Dsatur_original, Max_Connected_degree};
     Graph perm_graph(const Permutation &perm) const;
 
+    //a clique can be passed to the coloring heuristic, oftentimes yielding better bound and ordering
+    //coloring of the clique will definitely be optimal in the sense they can't but all get different colors
+
     //dsatur with max saturated degrees but first ties are broken by their degree in the whole graph
-    Coloring dsatur(Permutation &ordering) const;
-    Coloring dsatur(Permutation &ordering, const NeighborList& neighbors) const;
+    Coloring dsatur(Permutation &ordering, const std::set<Vertex>& clique = {}) const;
+    Coloring dsatur(Permutation &ordering, const NeighborList &neighbors, const std::set<Vertex>& clique = {}) const;
     //dsatur with max saturated degrees but first ties are broken by their degree in the uncolored subgraph
-    Coloring dsatur_original(Permutation &ordering) const;
-    Coloring dsatur_original(Permutation &ordering, const NeighborList& neighbors) const;
+    Coloring dsatur_original(Permutation &ordering, const std::set<Vertex>& clique = {}) const;
+    Coloring dsatur_original(Permutation &ordering, const NeighborList& neighbors, const std::set<Vertex>& clique = {}) const;
     //max connected degree, either only gets that ordering or also gets a greedy coloring using that heuristic/ordering
-    Coloring max_connected_degree_coloring(Permutation &ordering) const;
-    Coloring max_connected_degree_coloring(Permutation &ordering, const NeighborList& neighbors) const;
-    Permutation max_connected_degree_ordering() const;
-    Permutation max_connected_degree_ordering(const NeighborList& neighbors) const;
+    Coloring max_connected_degree_coloring(Permutation &ordering, const std::set<Vertex>& clique = {}) const;
+    Coloring max_connected_degree_coloring(Permutation &ordering, const NeighborList& neighbors, const std::set<Vertex>& clique = {}) const;
+    Permutation max_connected_degree_ordering(const std::set<Vertex>& clique = {}) const;
+    Permutation max_connected_degree_ordering(const NeighborList& neighbors, const std::set<Vertex>& clique = {}) const;
 
     //simply sort the vertices by descending degrees
     Permutation max_degree_ordering() const;
     Permutation max_degree_ordering(const NeighborList& neighbors) const;
 
-    //removes single or multiple given vertices from the graph, re labels remaining vertices accordingly
+    //removes single or multiple given vertices from the graph, relabels remaining vertices accordingly
     void remove_vertex(Vertex remove);
     void remove_vertices(const std::set<Vertex>& to_remove);
     //removes the k last vertices, no relabeling of vertices is necessary
@@ -107,12 +106,14 @@ public:
     void edge_addition(const std::set<Vertex>& clique);
     void edge_addition(const std::set<Vertex>& clique, const NeighborList& neighbors);
 
-    friend class DDColors;
+
+    int constraint_graph_width();
+    int constraint_graph_ordering();
 
 };
 
 //helper functions to possibly swap to colors and improve coloring found through heuristics
-//first one also adjusts the vertex_color vector if one is given
+//also adjusts the vertex_color vector if one is given
 bool try_color_swap(Vertex max_saturated_vertex, const NeighborList &neighbors, Coloring &coloring,
                     std::vector<int> &vertex_color);
 

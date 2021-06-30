@@ -58,10 +58,16 @@ struct Options{
     bool print_stats = true;
     bool print_time = true;
     bool preprocess_graph = false;
-    PathDecomposition path_decomposition = AvoidConflicts;
-    bool use_upperbound_in_IP = false;
+    int preprocessing_hint = 0;
     //TODO mention this in BA
+    PathDecomposition path_decomposition = PreferOneArcs;//AvoidConflicts;
+    bool use_upperbound_in_IP = false;
+    bool safe_LP_bounds  = false;
+    Formulation formulation = Normal;
+    bool ordering_random_tiebreaks = false;
+    bool use_clique_in_ordering = false;//TODO add option of this to program call
     int multiple_dsatur = 1;//TODO use this or not
+    //TODO option for safe lp bounds and changing the LP
 };
 
 //TODO maybe start timing when calling run() and not in initialisation
@@ -91,7 +97,7 @@ public:
     std::pair<std::vector<PathLabelConflict>, int>
     find_conflict_and_primal_heuristic(DecisionDiagram &dd, double flow_val, Model model = IP);
 
-    void preprocessing_graph(int lower_bound = 0);
+    void preprocessing_graph();
 
 private:
     //helper function to call when initilaising a new DDColors object
@@ -115,6 +121,7 @@ private:
 
     void longest_path_refinement(DecisionDiagram &dd);
 
+    std::set<Vertex> clique = {};//TODO
 };
 
 //helper function to try and swap colors during last phase of the primal heuristic

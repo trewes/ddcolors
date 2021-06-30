@@ -352,7 +352,7 @@ detect_edge_conflict(DecisionDiagram dd, const NeighborList &neighbors, double f
 
 
 
-double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_upper_bound) {
+double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_upper_bound, Formulation formulation) {
 
     COLORlp* flow_lp;//environment is initialised in DDColors
     COLORlp_init(&flow_lp, "flow_lp");
@@ -384,11 +384,6 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
     int num_columns = edge_index;
     // introduced all variables and set objective function but have no rows/constraints
 
-    //for dualizing and looking at matrix
-//    int size = std::accumulate(dd.begin(), dd.end(), 0, [](size_t sum, const std::vector<Node> &layer) { return sum + layer.size(); });
-//    std::vector<std::vector<double>> A(n+size-2, std::vector<double>(num_columns));
-
-
     //add rows in two phases: 1. in each level there is exactly one 1-arc with flow 1
     // 2. flow conservation and //3. that variables are integer in range is set during adding those variables/columns
 
@@ -400,7 +395,6 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
             //get index of the 1-arc of that node if it exists and set that cval to 1
             if(u.one_arc != -1){
                 vec_ind.push_back(edge_index);
-//                A[layer][edge_index] = 1;
                 edge_index++;
             }
             if(u.zero_arc != -1){
@@ -425,12 +419,10 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
     Node & root = dd[0][0];
     if(root.one_arc != -1){
         old_incoming_arcs[dd[1][root.one_arc].index].push_back(edge_index);
-//        A[n+node_index][edge_index] = 1;
         edge_index++;
     }
     if(root.zero_arc != -1){
         old_incoming_arcs[dd[1][root.zero_arc].index].push_back(edge_index);
-//        A[n+node_index][edge_index] = 1;
         edge_index++;
     }
     std::map<NodeIndex , std::vector<EdgeIndex> > new_incoming_arcs;
@@ -443,21 +435,18 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
             for(EdgeIndex e : old_incoming_arcs[u.index]){
                 vec_ind.push_back(e);
                 vec_val.push_back(1.0);
-//                A[n+node_index][e] = 1;
             }
             //outgoing edges
             if(u.one_arc != -1){
                 new_incoming_arcs[dd[layer+1][u.one_arc].index].push_back(edge_index);
                 vec_ind.push_back(edge_index);
                 vec_val.push_back(-1.0);
-//                A[n+node_index][edge_index] = -1;
                 edge_index++;
             }
             if(u.zero_arc != -1){
                 new_incoming_arcs[dd[layer+1][u.zero_arc].index].push_back(edge_index);
                 vec_ind.push_back(edge_index);
                 vec_val.push_back(-1.0);
-//                A[n+node_index][edge_index] = -1;
                 edge_index++;
             } else { //this should never happen since we don't consider the terminal node
                 std::cout << "Error: there is no zero-arc!" << std::endl;
@@ -472,38 +461,25 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
     }
 
 
-//    for(auto &row : A){
-//        std::cout << row << std::endl;
-//    }
-//    std::cout << "Transpose" << std::endl;
-//    for(int i = 0; i < num_columns; i++){
-//        for(int j = 0; j < n+size-2; j++){
-//            std::cout << A[j][i] << " ";
-//        }     std::cout << std::endl;
-//    }
-
-//    int dd_size = std::accumulate(dd.begin(), dd.end(), 0, [](size_t sum, const std::vector<Node> &layer) { return sum + layer.size(); });
-//    std::vector<int> index = {0};
-//    std::vector<double> val = {1.0};
-//    COLORlp_addrow(flow_lp, 1, index.data(), val.data(), COLORlp_EQUAL, 1, nullptr);
-
-//    //input variable bounds as extra constraints
-//    for(int i = 1; i < num_columns; i++){
-//        index = {i};
-//        COLORlp_addrow(flow_lp, 1, index.data(), val.data(), COLORlp_LESS_EQUAL, ub, nullptr);
-//    }
+    if (formulation == ExtraConstraints or formulation == AllConstraints) {
+        std::vector<int> index = {0};
+        std::vector<double> val = {1.0};
+        COLORlp_addrow(flow_lp, 1, index.data(), val.data(), COLORlp_EQUAL, 1, nullptr);//or COLORlp_GREATER_EQUAL
+    }
+    if (formulation == BoundConstraints or formulation == AllConstraints) {
+        //input variable bounds as extra constraints
+        std::vector<int> index = {0};
+        std::vector<double> val = {1.0};
+        for(int i = 0; i < num_columns; i++){
+            if(i == 0 and formulation == AllConstraints) continue;
+            index = {i};
+            COLORlp_addrow(flow_lp, 1, index.data(), val.data(), COLORlp_LESS_EQUAL, ub, nullptr);
+        }
+    }
 
 
     //TODO how does this work
 //    if(model == IP) COLORlp_set_cutoff(flow_lp, double(ub+1));
-
-//    int root_arcs[2] = {0,1};
-//    double root_coeff[2] = {1.0,1.0};
-//    COLORlp_addrow(flow_lp, 2, root_arcs, root_coeff, COLORlp_LESS_EQUAL, double(ub+1), nullptr);
-//    constraint for first 1-arc being at least 1
-//    COLORlp_addrow(flow_lp, 1, root_arcs, root_coeff, COLORlp_GREATER_EQUAL, double(1), nullptr);
-
-
 
 
     COLORlp_optimize(flow_lp);
@@ -516,7 +492,6 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
     solution.reserve(num_columns);
     COLORlp_x(flow_lp, solution.data());
     solution.assign(solution.data(), solution.data() + num_columns);
-//    std::cout << solution << std::endl;
 
     double double_safe_bound = 0.0;
     if (model == LP) {
@@ -554,14 +529,19 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
 
         if("Neumaier" and true){
 
+            const int originalRounding = fegetround( );
+
             std::vector<double> dual_solution;
             unsigned int dd_size = num_nodes(dd);
-            dual_solution.reserve(n + dd_size - 2 + num_columns); // dual solution consists of n variabes for the constraints of each layer + the variables for each node except r,t
+            // dual solution consists of n variabes for the constraints of each layer + the variables for each node except r,t
+            // + possibly dual variables for the bound constraints, if those are used
+            dual_solution.reserve(n + dd_size - 2 + num_columns);
             COLORlp_pi(flow_lp, dual_solution.data());
-            dual_solution.assign(dual_solution.data(), dual_solution.data() + n + dd_size - 2);
+            dual_solution.assign(dual_solution.data(), dual_solution.data() + n + dd_size - 2);//consider bound constraints! //TODO
+
+            fesetround(FE_DOWNWARD);
             long double dual_obj = std::accumulate(dual_solution.begin(), dual_solution.begin() + n, (long double)(0.0), [](long double sum, double var){return sum+var;});
 
-            const int originalRounding = fegetround( );
             fesetround(FE_UPWARD);
 
             //save total index of first node on each level
@@ -606,11 +586,9 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
             if(num_columns != int(residual.size())) {
                 throw std::runtime_error("Not the correct sizes: " + std::to_string(num_columns) + " and " + std::to_string(residual.size()));
             }
-//            std::cout << "given the dual solution as  : " << dual_solution << std::endl;
-//            std::cout << "residual computed as follows: " << residual << std::endl;
 
-
-            long double delta = 0; //comute delta with n as upper bounds for primal variables
+            //compute delta with set upper bounds for primal variables
+            long double delta = 0;
             for(long double & res_val : residual){
                 delta += ub * std::max(res_val, (long double)(0.0));
             }
@@ -633,7 +611,6 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
                         std::to_string(flow_val - std::pow(10,-5)) + " and " + std::to_string(double_safe_bound);
                 throw std::runtime_error(message.str());
             }
-//            if(flow_val < safe_bound) {throw std::runtime_error("Not sure of the error, says appx. flow is smaller than 'safe' lower bound");}
         }
     }
 
@@ -848,5 +825,81 @@ std::vector<PathLabelConflict> experimental_conflict_on_longest_path(const Decis
 }
 
 
+DecisionDiagram exact_decision_diagram_test(const Graph& g, const NeighborList& neighbors) {
+    DecisionDiagram  dd;
+    dd.resize(g.ncount() + 1);
+    int num_nodes = 0;
+    int num_arcs = 0;
+
+    StateInfo initial_state;
+    for (unsigned int i = 1; i <= g.ncount(); ++i){
+        initial_state.insert(initial_state.end(), i);
+    }
+
+    dd[0].emplace_back(1, 0, initial_state);
+    num_nodes++;
+    for (unsigned int layer = 0; layer < g.ncount(); ++layer) {
+        //which variable to chosse next?
+        std::map<Vertex, int> vertex_min_states;
+        for(Node& u : dd[layer]){
+            for(Vertex v : u.state_info){
+                vertex_min_states[v]++;
+            }
+        }
+        Vertex next_var = std::min_element(vertex_min_states.begin(), vertex_min_states.end(), [](std::pair<Vertex, int> u, std::pair<Vertex, int> w){return u.second < w.second;})->first;
+        if(next_var == 0) throw std::runtime_error("Next vertex was 0, this can not happen.");
+        std::cout << "Choose vertex/var " << next_var << " appearing in " << vertex_min_states[next_var] << " states" << std::endl;
+        for(Node& u : dd[layer]){
+
+            if(num_nodes > std::pow(10, 6)){
+                throw std::runtime_error("The exact decision diagram contains more than one million nodes.");
+            }
+
+            if(u.state_info.count(next_var)){
+                auto new_state = u.state_info;
+                new_state.erase(next_var);
+                for(unsigned int neighbor : neighbors[next_var - 1]){
+                    new_state.erase(neighbor);
+                }
+
+                //look if there exists an equivalent node
+                auto one_arc_it = std::find_if(dd[layer + 1].begin(), dd[layer + 1].end(), [&new_state](const Node& v){return v.state_info == new_state;});
+                if(one_arc_it == dd[layer + 1].end() ){
+                    dd[layer + 1].emplace_back(layer + 2, int(dd[layer + 1].size()), new_state);
+                    num_nodes++;
+                    u.one_arc = int(dd[layer + 1].size() - 1);
+                } else {
+                    u.one_arc = int(one_arc_it - dd[layer + 1].begin());
+                }
+                num_arcs++;
+
+                new_state = u.state_info;
+                new_state.erase(next_var);
+                auto zero_arc_it = std::find_if(dd[layer + 1].begin(), dd[layer + 1].end(), [&new_state](const Node& v){return v.state_info == new_state;});
+                if(zero_arc_it == dd[layer + 1].end()){
+                    dd[layer + 1].emplace_back(layer + 2, int(dd[layer + 1].size()), new_state);
+                    num_nodes++;
+                    u.zero_arc = int(dd[layer + 1].size() - 1);
+                } else {
+                    u.zero_arc = int(zero_arc_it - dd[layer + 1].begin());
+                }
+                num_arcs++;
+            }else{
+                auto zero_arc_it = std::find_if(dd[layer + 1].begin(), dd[layer + 1].end(), [&u](const Node& v){return v.state_info == u.state_info;});
+                if(zero_arc_it == dd[layer + 1].end()){
+                    dd[layer + 1].emplace_back(layer + 2, int(dd[layer + 1].size()), u.state_info);
+                    num_nodes++;
+                    u.zero_arc = int(dd[layer + 1].size() - 1);
+                } else {
+                    u.zero_arc = int(zero_arc_it - dd[layer + 1].begin());
+                }
+                num_arcs++;
+            }
+        }
+    }
+    std::cout << "Done building the exact decision diagram containing " << num_nodes << " nodes, " << num_arcs
+              << " arcs and width " << get_width(dd) << "." << std::endl;
+    return dd;
+}
 
 

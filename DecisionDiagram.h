@@ -86,14 +86,16 @@ std::vector<PathLabelConflict>
 detect_edge_conflict(DecisionDiagram dd, const NeighborList &neighbors, double flow_val, Model model = IP,
                      ConflictResolution find_conflicts = SingleConflict, PathDecomposition path_decomposition = PreferOneArcs);
 
-double compute_flow_solution(DecisionDiagram &dd, Model model = IP, int coloring_upper_bound = -1);
+enum Formulation {Normal, BoundConstraints, ExtraConstraints, AllConstraints};
+double
+compute_flow_solution(DecisionDiagram &dd, Model model = IP, int coloring_upper_bound = -1, Formulation formulation = Normal);
 
 void find_longest_path(const DecisionDiagram &dd, Path &path, Label &label);
 PathLabelConflict conflict_on_longest_path(const DecisionDiagram &dd, const NeighborList &neighbors);
 std::vector<PathLabelConflict> experimental_conflict_on_longest_path(const DecisionDiagram &dd, const NeighborList &neighbors);
 
 
-
+DecisionDiagram exact_decision_diagram_test(const Graph& g, const NeighborList& neighbors);
 
 
 //TODO for benchmarks: consider unlimited/more than 100 longest path iterations, seems quite beneficial (sometimes!)

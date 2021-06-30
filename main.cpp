@@ -17,7 +17,7 @@ void print_help(){
     std::cout<<"Usage: ddcolors.exe [options] graph"<<std::endl;
     std::cout<<"Options:"<<std::endl;
     std::cout<<"-h|--help               :Prints this help message."<<std::endl;
-    std::cout<<"-s|--stats              :Enables output of statistics gathered during the algorithm."<<std::endl;
+    std::cout<<"-i|--info               :Enables output of information gathered during the algorithm."<<std::endl;
     std::cout<<"-t|--time               :Enables output of execution time."<<std::endl;
     std::cout<<"-m|--method arg         :Which algorithm is to be run to get the chromatic number: i for iterative refinement (default),"<<std::endl;//b for basic as hidden option
     std::cout<<"                         e for exact compilation and h for heuristic only (note that this gives only an upper bound)."<<std::endl;
@@ -30,6 +30,12 @@ void print_help(){
     std::cout<<"-a|--arc_redirection    :Redirects arcs to the most similar node in the next level."<<std::endl;
     std::cout<<"-c|--conflicts arg      :Detect and resolve conflicts in a flow solution after chosen method."<<std::endl;
     std::cout<<"                         s for single conflict, m for multiple conflicts (default), f for conflicts with largest flow."<<std::endl;
+    std::cout<<"-d|--decomposition arg  :Specifies the heuristic used in the path decomposition of the flow."<<std::endl;
+    std::cout<<"                         o is for PreferOneArcs (default), a for paths avoiding conflicts and zero for PreferZeroArcs."<<std::endl;
+    std::cout<<"-u|--use_bound          :Makes the solver use the upper bound as bound on the variables in the IP/LP to solve."<<std::endl;
+    std::cout<<"-s|--safe_bound         :Uses technique described be Neumaier to get safe lower bounds from the LP solutions."<<std::endl;
+    std::cout<<"-f|--formulation arg    :Allows slight changes to the way the IP/LP is formulated. n id for normal (default)"<<std::endl;
+    std::cout<<"                         e is for constraint of setting first 1-arc to 1, b for add the variable bounds as constraints, -a for both."<<std::endl;
 }
 
 #define MAX_PNAME_LEN 128
@@ -101,7 +107,7 @@ int main(int argc, char* argv[]) {
         std::cout << "after separating conflict (1,3):" << std::endl;
         separate_edge_conflict(dd, nlist, PathLabelConflict({0,0,0}, {oneArc,oneArc,oneArc}, std::make_tuple(1,3)), OriginalArcs);
         print_decision_diagram(dd, false);
-        int flow_val = compute_flow_solution(dd);
+        int flow_val = compute_flow_solution(dd, IP);
         for (auto &plc : detect_edge_conflict(dd, nlist, flow_val, IP, MultipleConflicts, PreferOneArcs)){
             int j, k;
             std::tie(j, k) = plc.conflict;
@@ -128,7 +134,7 @@ int main(int argc, char* argv[]) {
         DecisionDiagram dd = initial_decision_diagram(g);
         separate_edge_conflict(dd, nlist, PathLabelConflict({0,0,0}, {oneArc,oneArc,oneArc}, std::make_tuple(1,3)), OriginalArcs);
         print_decision_diagram(dd, false);
-        int flow_val = compute_flow_solution(dd);
+        int flow_val = compute_flow_solution(dd, IP);
 
         std::vector<PathLabelConflict> conflict_info = detect_edge_conflict(dd, nlist, flow_val, IP, MultipleConflicts,
                                                                             PreferOneArcs);
@@ -393,8 +399,8 @@ int main(int argc, char* argv[]) {
 
 
     if(0){
-        Graph g(4, 3, {1, 3, 3, 4, 4, 2});
-//        Graph g("../Graphs/mulsol.i.1.col");
+//        Graph g(4, 3, {1, 3, 3, 4, 4, 2});
+        Graph g("../Graphs/mulsol.i.1.col");
         Permutation perm;
         int bound = g.max_connected_degree_coloring(perm).size();
         g = g.perm_graph(perm);
@@ -528,7 +534,7 @@ int main(int argc, char* argv[]) {
         std::cout << hint << std::endl;
 
         DDColors ddc(g);
-        ddc.preprocessing_graph(hint);
+        ddc.preprocessing_graph();
     }
 
     if(0) {
@@ -536,12 +542,18 @@ int main(int argc, char* argv[]) {
         Graph g(filename);
         NeighborList neighbors = g.get_neighbor_list();
         DecisionDiagram dd = exact_decision_diagram(g);
-        double ip_flow = compute_flow_solution(dd, IP);//TODO does upper bound make it better?
+        double ip_flow = compute_flow_solution(dd, IP, Normal);
         int colorsize = int(DDColors::primal_heuristic(dd, neighbors).size());
 
         std::cout << "flow bound " << ip_flow << " vs color bound " << colorsize << std::endl;
 
 
+    }
+
+    if(0){
+        char const *filename = (0) ? "../Graphs/r250.1c.col" : argv[1];
+        Graph g(filename);
+        std::cout << "width is " << g.constraint_graph_width() << std::endl;
     }
 
 //return 0;
@@ -551,18 +563,22 @@ int main(int argc, char* argv[]) {
     int option_index = 0;
     static struct option long_options[] = {
             {"help", no_argument, nullptr, 'h'},
-            {"stats", no_argument, nullptr, 's'},
+            {"info", no_argument, nullptr, 'i'},
             {"time", no_argument, nullptr, 't'},
             {"arc_redirection", no_argument, nullptr, 'a'},
-            {"preprocessing", no_argument, nullptr, 'p'},
+            {"preprocessing", optional_argument, nullptr, 'p'},
             {"method", required_argument, nullptr, 'm'},
             {"conflicts", required_argument, nullptr, 'c'},
             {"ordering", required_argument, nullptr, 'o'},
             {"relaxation", required_argument, nullptr, 'r'},
             {"longest_paths", required_argument, nullptr, 'l'},
+            {"decomposition", required_argument, nullptr, 'd'},
+            {"use_bound", no_argument, nullptr, 'u'},
+            {"safe_bound", no_argument, nullptr, 's'},
+            {"formulation", no_argument, nullptr, 'f'},
     };
 
-    while ((opt = getopt_long(argc, argv, "hstapc:o:r:l:m:", long_options, &option_index)) != -1){
+    while ((opt = getopt_long(argc, argv, "hitap::uskc:o:r:l:m:d:f:", long_options, &option_index)) != -1){
         switch (opt) {
 
             default:
@@ -572,7 +588,7 @@ int main(int argc, char* argv[]) {
                 print_help();
                 return -1;
 
-            case 's':
+            case 'i':
                 dd_settings.print_stats = true;
                 break;
             case 't':
@@ -626,6 +642,9 @@ int main(int argc, char* argv[]) {
                 else if(*optarg=='d'){
                     dd_settings.vertex_ordering = Graph::OrderType::Dsatur;
                 }
+                else if(*optarg=='o'){
+                    dd_settings.vertex_ordering = Graph::OrderType::Dsatur_original;
+                }
                 else{
                     std::cout<<"The ordering type was not correctly specified."<<std::endl;
                     std::cout<<"Program failed."<<std::endl;
@@ -654,6 +673,53 @@ int main(int argc, char* argv[]) {
                 break;
             case 'p':
                 dd_settings.preprocess_graph = true;
+                if(optarg != nullptr and *optarg != '\0'){
+                    dd_settings.preprocessing_hint = std::stoi(optarg, nullptr, 10);
+                }
+                break;
+            case 'd':
+                if(*optarg=='o'){
+                    dd_settings.path_decomposition = PreferOneArcs;
+                }
+                else if(*optarg=='a'){
+                    dd_settings.path_decomposition = AvoidConflicts;
+                }
+                else if(*optarg=='z'){
+                    dd_settings.path_decomposition = PreferZeroArcs;
+                }
+                else{
+                    std::cout<<"The decomposition type was not correctly specified."<<std::endl;
+                    std::cout<<"Program failed."<<std::endl;
+                    return -1;
+                }
+                break;
+            case 'u':
+                dd_settings.use_upperbound_in_IP = true;
+                break;
+            case 's':
+                dd_settings.safe_LP_bounds = true;
+                break;
+            case 'f':
+                if(*optarg=='n'){
+                    dd_settings.formulation = Normal;
+                }
+                else if(*optarg=='b'){
+                    dd_settings.formulation = BoundConstraints;
+                }
+                else if(*optarg=='e'){
+                    dd_settings.formulation = ExtraConstraints;
+                }
+                else if(*optarg=='a'){
+                    dd_settings.formulation = AllConstraints;
+                }
+                else{
+                    std::cout<<"The IP/LP formulation type was not correctly specified."<<std::endl;
+                    std::cout<<"Program failed."<<std::endl;
+                    return -1;
+                }
+                break;
+            case 'k':
+                dd_settings.use_clique_in_ordering = true;//TODO add long command/help
                 break;
         }
     }

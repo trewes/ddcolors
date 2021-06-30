@@ -254,56 +254,76 @@ Graph Graph::perm_graph(const Permutation &perm) const {
     return perm_graph;
 }
 
-Coloring Graph::dsatur(Permutation &ordering) const {
+Coloring Graph::dsatur(Permutation &ordering, const std::set<Vertex>& clique) const {
     NeighborList neighbors = get_neighbor_list();
-    return dsatur(ordering, neighbors);
+    return dsatur(ordering, neighbors, clique);
 }
 
-Coloring Graph::dsatur(Permutation &ordering, const NeighborList& neighbors) const {
+Coloring Graph::dsatur(Permutation &ordering, const NeighborList &neighbors, const std::set<Vertex>& clique) const {
     ordering.clear();
     ordering.reserve(_ncount);
     Coloring coloring;
-    //initialise all vertices to be uncolored
+    //initialise all vertices to be uncolored and have zero saturation
     std::vector<int> vertex_color(_ncount, -1);
+    //record for an uncolored vertex to how many colored vertices it is connected to
+    std::vector<int> saturation_level(_ncount, 0);
     std::set<Vertex> unselected_vertices;
     for(size_t vertex = 1; vertex <= int(_ncount); vertex++) {
         unselected_vertices.insert(unselected_vertices.begin(), vertex);
     }
 
-    //find max degree vertex and select it as first colored vertex. ties are broken randomly
-    Vertex max_degree_vertex = 0;
-    std::set<Vertex> tied_max_degree;
-    int max_degree = -1;
-    for(size_t vertex = 1; vertex <= int(_ncount); vertex++){
-        if(int(neighbors[vertex-1].size()) > max_degree){
-            max_degree = int(neighbors[vertex-1].size());
-            max_degree_vertex = vertex;
-            tied_max_degree.clear();
-            tied_max_degree.insert(tied_max_degree.end(), max_degree_vertex);
-        }
-        else if(int(neighbors[vertex-1].size()) == max_degree){
-            tied_max_degree.insert(tied_max_degree.end(), vertex);
+    if(clique.size() > 2) {//ignore trivial or empty clique
+//        std::cout << "given clique" << std::endl;
+        //fix color of the vertices of supplied clique and set saturation levels
+        int color_index = 0;
+        for (Vertex v : clique) {
+            ordering.push_back(v);
+            unselected_vertices.erase(v);
+            coloring.push_back({}); //new color class
+            coloring[color_index].insert(v); //assign first color to max degree vertex
+            vertex_color[v - 1] = color_index;
+            color_index++;
+            //update saturation levels
+            for (Vertex neighbor : neighbors[v - 1]) {
+                saturation_level[neighbor - 1]++;
+            }
+            saturation_level[v - 1] = std::numeric_limits<int>::min();
         }
     }
-    //if more than one vertex with max degree, choose one at random
-    if(tied_max_degree.size() > 1 and opt!= NULL and opt->random_tie_breaks){
-        max_degree_vertex = random_element(tied_max_degree);
-    }
+    else {
+//        std::cout << "no clique" << std::endl;
+        //no clique given, only color a first vertex by it's max degree
+        //find max degree vertex and select it as first colored vertex. ties are broken randomly if specified
+        Vertex max_degree_vertex = 0;
+        std::set<Vertex> tied_max_degree;
+        int max_degree = -1;
+        for (Vertex vertex : unselected_vertices) {
+            if (int(neighbors[vertex - 1].size()) > max_degree) {
+                max_degree = int(neighbors[vertex - 1].size());
+                max_degree_vertex = vertex;
+                tied_max_degree.clear();
+                tied_max_degree.insert(tied_max_degree.end(), max_degree_vertex);
+            } else if (int(neighbors[vertex - 1].size()) == max_degree) {
+                tied_max_degree.insert(tied_max_degree.end(), vertex);
+            }
+        }
+        //if more than one vertex with max degree, choose one at random
+        if (tied_max_degree.size() > 1 and random_tiebreaks) {
+            max_degree_vertex = random_element(tied_max_degree);
+        }
 
-    //color first selected vertex
-    ordering.push_back(max_degree_vertex);
-    unselected_vertices.erase(max_degree_vertex);
-    coloring.push_back({}); //new color class
-    coloring[0].insert(max_degree_vertex); //assign first color to max degree vertex
-    vertex_color[max_degree_vertex-1] = 0;
-
-    //record for an uncolored vertex to how many colored vertices it is connected
-    std::vector<int> saturation_level(_ncount, 0);
-    //don't want to select already selected vertex
-    saturation_level[max_degree_vertex - 1] = std::numeric_limits<int>::min();
-    //update saturation level for neighbors of first selected vertex
-    for(Vertex neighbor : neighbors[max_degree_vertex-1]){
-        saturation_level[neighbor - 1]++;
+        //color first selected vertex
+        ordering.push_back(max_degree_vertex);
+        unselected_vertices.erase(max_degree_vertex);
+        coloring.push_back({}); //new color class
+        coloring[0].insert(max_degree_vertex); //assign first color to max degree vertex
+        vertex_color[max_degree_vertex - 1] = 0;
+        //don't want to select already selected vertex
+        saturation_level[max_degree_vertex - 1] = std::numeric_limits<int>::min();
+        //update saturation level for neighbors of first selected vertex
+        for (Vertex neighbor : neighbors[max_degree_vertex - 1]) {
+            saturation_level[neighbor - 1]++;
+        }
     }
 
     //main loop looking for the next vertex according to its saturation level
@@ -335,7 +355,7 @@ Coloring Graph::dsatur(Permutation &ordering, const NeighborList& neighbors) con
             }
         }
         //select max saturated vertex, at random if there exist multiple
-        if(saturated_tied_max_degrees.size() > 1 and opt!= NULL and opt->random_tie_breaks) {
+        if(saturated_tied_max_degrees.size() > 1 and random_tiebreaks) {
             max_saturated_vertex = int(random_element(saturated_tied_max_degrees));
         }
         ordering.push_back(max_saturated_vertex);
@@ -401,64 +421,90 @@ Coloring Graph::dsatur(Permutation &ordering, const NeighborList& neighbors) con
 }
 
 
-Coloring Graph::dsatur_original(Permutation &ordering) const {
+Coloring Graph::dsatur_original(Permutation &ordering, const std::set<Vertex>& clique) const {
     NeighborList neighbors = get_neighbor_list();
-    return dsatur_original(ordering, neighbors);
+    return dsatur_original(ordering, neighbors, clique);
 }
 
 
-Coloring Graph::dsatur_original(Permutation &ordering, const NeighborList& neighbors) const {
+Coloring Graph::dsatur_original(Permutation &ordering, const NeighborList& neighbors, const std::set<Vertex>& clique) const {
     ordering.clear();
     ordering.reserve(_ncount);
     Coloring coloring;
     //initialise all vertices to be uncolored
     std::vector<int> vertex_color(_ncount, -1);
+    //record for an uncolored vertex to how many colored vertices it is connected
+    //also track degree of degree in uncolored subgraph
+    std::vector<int> saturation_level(_ncount, 0);
+    std::vector<int> uncolored_subgraph_degree(_ncount, 0);
+    for(Vertex v = 1; v <= _ncount; v++)
+        uncolored_subgraph_degree[v-1] = int(neighbors[v-1].size());
     std::set<Vertex> unselected_vertices;
     for(size_t vertex = 1; vertex <= int(_ncount); vertex++) {
         unselected_vertices.insert(unselected_vertices.begin(), vertex);
     }
 
-    //find max degree vertex and select it as first colored vertex. ties are broken randomly
-    Vertex max_degree_vertex = 0;
-    std::set<Vertex> tied_max_degree;
-    int max_degree = -1;
-    for(size_t vertex = 1; vertex <= int(_ncount); vertex++){
-        if(int(neighbors[vertex-1].size()) > max_degree){
-            max_degree = int(neighbors[vertex-1].size());
-            max_degree_vertex = vertex;
-            tied_max_degree.clear();
-            tied_max_degree.insert(tied_max_degree.end(), max_degree_vertex);
-        }
-        else if(int(neighbors[vertex-1].size()) == max_degree){
-            tied_max_degree.insert(tied_max_degree.end(), vertex);
+    if(clique.size() > 2) {//ignore trivial or empty clique
+//        std::cout << "given clique" << std::endl;
+        //fix color of the vertices of supplied clique and set saturation levels
+        int color_index = 0;
+        for (Vertex v : clique) {
+            ordering.push_back(v);
+            unselected_vertices.erase(v);
+            coloring.push_back({}); //new color class
+            coloring[color_index].insert(v); //assign first color to max degree vertex
+            vertex_color[v - 1] = color_index;
+            color_index++;
+            //update saturation levels
+            for (Vertex neighbor : neighbors[v - 1]) {
+                saturation_level[neighbor - 1]++;
+                uncolored_subgraph_degree[neighbor - 1]--;
+            }
+            saturation_level[v - 1] = std::numeric_limits<int>::min();
+            uncolored_subgraph_degree[v - 1] = std::numeric_limits<int>::min();
         }
     }
-    //if more than one vertex with max degree, choose one at random
-    if(tied_max_degree.size() > 1 and opt!= NULL and opt->random_tie_breaks){
-        max_degree_vertex = random_element(tied_max_degree);
+    else {
+//        std::cout << "no clique" << std::endl;
+        //no clique given, only color a first vertex by it's max degree
+        //find max degree vertex and select it as first colored vertex. ties are broken randomly
+        Vertex max_degree_vertex = 0;
+        std::set<Vertex> tied_max_degree;
+        int max_degree = -1;
+        for(size_t vertex = 1; vertex <= int(_ncount); vertex++){
+            if(int(neighbors[vertex-1].size()) > max_degree){
+                max_degree = int(neighbors[vertex-1].size());
+                max_degree_vertex = vertex;
+                tied_max_degree.clear();
+                tied_max_degree.insert(tied_max_degree.end(), max_degree_vertex);
+            }
+            else if(int(neighbors[vertex-1].size()) == max_degree){
+                tied_max_degree.insert(tied_max_degree.end(), vertex);
+            }
+        }
+        //if more than one vertex with max degree, choose one at random
+        if(tied_max_degree.size() > 1 and random_tiebreaks){
+            max_degree_vertex = random_element(tied_max_degree);
+        }
+
+        //color first selected vertex
+        ordering.push_back(max_degree_vertex);
+        unselected_vertices.erase(max_degree_vertex);
+        coloring.push_back({}); //new color class
+        coloring[0].insert(max_degree_vertex); //assign first color to max degree vertex
+        vertex_color[max_degree_vertex-1] = 0;
+
+
+        //don't want to select already selected vertex, remove from consideration
+        saturation_level[max_degree_vertex - 1] = std::numeric_limits<int>::min();
+        uncolored_subgraph_degree[max_degree_vertex - 1] = std::numeric_limits<int>::min();
+        //update saturation level for neighbors of first selected vertex
+        for(Vertex neighbor : neighbors[max_degree_vertex-1]){
+            saturation_level[neighbor - 1]++;
+            uncolored_subgraph_degree[neighbor - 1]--;
+        }
     }
 
-    //color first selected vertex
-    ordering.push_back(max_degree_vertex);
-    unselected_vertices.erase(max_degree_vertex);
-    coloring.push_back({}); //new color class
-    coloring[0].insert(max_degree_vertex); //assign first color to max degree vertex
-    vertex_color[max_degree_vertex-1] = 0;
-
-    //record for an uncolored vertex to how many colored vertices it is connected
-    //also track degree of degree in uncolored subgraph
-    std::vector<int> saturation_level(_ncount, 0);
-    std::vector<int> uncolored_subgraph_degree(_ncount);
-    for(Vertex v = 1; v <= _ncount; v++)
-        uncolored_subgraph_degree[v-1] = int(neighbors[v-1].size());
-    //don't want to select already selected vertex, remove from consideration
-    saturation_level[max_degree_vertex - 1] = std::numeric_limits<int>::min();
-    uncolored_subgraph_degree[max_degree_vertex - 1] = std::numeric_limits<int>::min();
-    //update saturation level for neighbors of first selected vertex
-    for(Vertex neighbor : neighbors[max_degree_vertex-1]){
-        saturation_level[neighbor - 1]++;
-        uncolored_subgraph_degree[neighbor - 1]--;
-    }
 
     //main loop looking for the next vertex according to its saturation level
     while(not unselected_vertices.empty()){
@@ -489,7 +535,7 @@ Coloring Graph::dsatur_original(Permutation &ordering, const NeighborList& neigh
             }
         }
         //select max saturated vertex, at random if there exist multiple
-        if(saturated_tied_max_degrees.size() > 1 and opt!= NULL and opt->random_tie_breaks) {
+        if(saturated_tied_max_degrees.size() > 1 and random_tiebreaks) {
             max_saturated_vertex = int(random_element(saturated_tied_max_degrees));
         }
         ordering.push_back(max_saturated_vertex);
@@ -559,57 +605,80 @@ Coloring Graph::dsatur_original(Permutation &ordering, const NeighborList& neigh
 }
 
 
-Coloring Graph::max_connected_degree_coloring(Permutation &ordering) const {
+Coloring Graph::max_connected_degree_coloring(Permutation &ordering, const std::set<Vertex>& clique) const {
     NeighborList neighbors = get_neighbor_list();
-    return max_connected_degree_coloring(ordering, neighbors);
+    return max_connected_degree_coloring(ordering, neighbors, clique);
 }
 
-Coloring Graph::max_connected_degree_coloring(Permutation &ordering, const NeighborList& neighbors) const {
+Coloring Graph::max_connected_degree_coloring(Permutation &ordering, const NeighborList& neighbors, const std::set<Vertex>& clique) const {
     ordering.clear();
     ordering.reserve(_ncount);
     Coloring coloring;
     //initialise all vertices to be uncolored
     std::vector<int> vertex_color(_ncount, -1);
+    //record for an uncolored vertex to how many colored vertices it is connected
+    std::vector<int> num_selected_neighbors(_ncount, 0);
     std::set<Vertex> unselected_vertices;
     for(size_t vertex = 1; vertex <= int(_ncount); vertex++) {
         unselected_vertices.insert(unselected_vertices.begin(), vertex);
     }
 
-    //find max degree vertex and select it as first colored vertex. ties are broken randomly
-    Vertex max_degree_vertex = 0;
-    std::set<Vertex> tied_max_degree;
-    int max_degree = -1;
-    for(size_t vertex = 1; vertex <= int(_ncount); vertex++){
-        if(int(neighbors[vertex-1].size()) > max_degree){
-            max_degree = int(neighbors[vertex-1].size());
-            max_degree_vertex = vertex;
-            tied_max_degree.clear();
-            tied_max_degree.insert(tied_max_degree.end(), max_degree_vertex);
-        }
-        else if(int(neighbors[vertex-1].size()) == max_degree){
-            tied_max_degree.insert(tied_max_degree.end(), vertex);
+    if(clique.size() > 2) {//ignore trivial or empty clique
+//        std::cout << "given clique" << std::endl;
+        //fix color of the vertices of supplied clique and set saturation levels
+        int color_index = 0;
+        for (Vertex v : clique) {
+            ordering.push_back(v);
+            unselected_vertices.erase(v);
+            coloring.push_back({}); //new color class
+            coloring[color_index].insert(v); //assign first color to max degree vertex
+            vertex_color[v - 1] = color_index;
+            color_index++;
+            //update saturation levels
+            for (Vertex neighbor : neighbors[v - 1]) {
+                num_selected_neighbors[neighbor - 1]++;
+            }
+            num_selected_neighbors[v - 1] = std::numeric_limits<int>::min();
         }
     }
-    //if more than one vertex with max degree, choose one at random
-    if(tied_max_degree.size() > 1 and opt!= NULL and opt->random_tie_breaks){
-        max_degree_vertex = random_element(tied_max_degree);
+    else {
+//        std::cout << "no clique" << std::endl;
+        //no clique given, only color a first vertex by it's max degree
+        //find max degree vertex and select it as first colored vertex. ties are broken randomly
+        Vertex max_degree_vertex = 0;
+        std::set<Vertex> tied_max_degree;
+        int max_degree = -1;
+        for(size_t vertex = 1; vertex <= int(_ncount); vertex++){
+            if(int(neighbors[vertex-1].size()) > max_degree){
+                max_degree = int(neighbors[vertex-1].size());
+                max_degree_vertex = vertex;
+                tied_max_degree.clear();
+                tied_max_degree.insert(tied_max_degree.end(), max_degree_vertex);
+            }
+            else if(int(neighbors[vertex-1].size()) == max_degree){
+                tied_max_degree.insert(tied_max_degree.end(), vertex);
+            }
+        }
+        //if more than one vertex with max degree, choose one at random
+        if(tied_max_degree.size() > 1 and random_tiebreaks){
+            max_degree_vertex = random_element(tied_max_degree);
+        }
+
+        //color first selected vertex
+        ordering.push_back(max_degree_vertex);
+        unselected_vertices.erase(max_degree_vertex);
+        coloring.push_back({}); //new color class
+        coloring[0].insert(max_degree_vertex); //assign first color to max degree vertex
+        vertex_color[max_degree_vertex-1] = 0;
+
+        //don't want to select already selected vertex
+        num_selected_neighbors[max_degree_vertex - 1] = std::numeric_limits<int>::min();
+        //update saturation level for neighbors of first selected vertex
+        for(Vertex neighbor : neighbors[max_degree_vertex-1]){
+            num_selected_neighbors[neighbor - 1]++;
+        }
     }
 
-    //color first selected vertex
-    ordering.push_back(max_degree_vertex);
-    unselected_vertices.erase(max_degree_vertex);
-    coloring.push_back({}); //new color class
-    coloring[0].insert(max_degree_vertex); //assign first color to max degree vertex
-    vertex_color[max_degree_vertex-1] = 0;
-
-    //record for an uncolored vertex to how many colored vertices it is connected
-    std::vector<int> num_selected_neighbors(_ncount, 0);
-    //don't want to select already selected vertex
-    num_selected_neighbors[max_degree_vertex - 1] = std::numeric_limits<int>::min();
-    //update saturation level for neighbors of first selected vertex
-    for(Vertex neighbor : neighbors[max_degree_vertex-1]){
-        num_selected_neighbors[neighbor - 1]++;
-    }
 
     //main loop looking for the next vertex according to its saturation level
     while(not unselected_vertices.empty()){
@@ -640,7 +709,7 @@ Coloring Graph::max_connected_degree_coloring(Permutation &ordering, const Neigh
             }
         }
         //select max saturated vertex, at random if there exist multiple
-        if(saturated_tied_max_degrees.size() > 1 and opt!= NULL and opt->random_tie_breaks) {
+        if(saturated_tied_max_degrees.size() > 1 and random_tiebreaks) {
             max_saturated_vertex = int(random_element(saturated_tied_max_degrees));
         }
         ordering.push_back(max_saturated_vertex);
@@ -696,43 +765,61 @@ Coloring Graph::max_connected_degree_coloring(Permutation &ordering, const Neigh
 }
 
 
-Permutation Graph::max_connected_degree_ordering() const {
+Permutation Graph::max_connected_degree_ordering(const std::set<Vertex>& clique) const {
     NeighborList neighbors = get_neighbor_list();
-    return max_connected_degree_ordering(neighbors);
+    return max_connected_degree_ordering(neighbors, clique);
 }
 
 
-Permutation Graph::max_connected_degree_ordering(const NeighborList& neighbors) const {
+Permutation Graph::max_connected_degree_ordering(const NeighborList& neighbors, const std::set<Vertex>& clique) const {
     Permutation ordering;
     ordering.reserve(_ncount);
+    //record for an unselected vertex to how many selected vertices it is connected
+    std::vector<int> num_connected(_ncount);
     std::set<Vertex> unselected_vertices;
     for(size_t vertex = 1; vertex <= int(_ncount); vertex++) {
         unselected_vertices.insert(unselected_vertices.begin(), vertex);
     }
 
-    Vertex max_degree_vertex = 0;
-    int max_degree = -1;
-    //find max degree vertex and select it first
-    for(size_t vertex = 1; vertex <= int(_ncount); vertex++){
-        if(int(neighbors[vertex-1].size()) > max_degree){
-            max_degree = int(neighbors[vertex-1].size());
-            max_degree_vertex = vertex;
+    if(clique.size() > 2) {//ignore trivial or empty clique
+//        std::cout << "given clique" << std::endl;
+        //fix color of the vertices of supplied clique and set saturation levels
+        int color_index = 0;
+        for (Vertex v : clique) {
+            ordering.push_back(v);
+            unselected_vertices.erase(v);
+            color_index++;
+            //update saturation levels
+            for (Vertex neighbor : neighbors[v - 1]) {
+                num_connected[neighbor - 1]++;
+            }
+            num_connected[v - 1] = std::numeric_limits<int>::min();
         }
     }
-    ordering.push_back(max_degree_vertex);
-    unselected_vertices.erase(max_degree_vertex);
+    else {
+//        std::cout << "no clique" << std::endl;
+        //no clique given, only color a first vertex by it's max degree
+        Vertex max_degree_vertex = 0;
+        int max_degree = -1;
+        //find max degree vertex and select it first
+        for(size_t vertex = 1; vertex <= int(_ncount); vertex++){
+            if(int(neighbors[vertex-1].size()) > max_degree){
+                max_degree = int(neighbors[vertex-1].size());
+                max_degree_vertex = vertex;
+            }
+        }
+        ordering.push_back(max_degree_vertex);
+        unselected_vertices.erase(max_degree_vertex);
 
-
-    //record for an unselected vertex to how many selected vertices it is connected
-    std::vector<int> num_connected(_ncount);
-    //don't want to select already selected vertex
-    num_connected[max_degree_vertex - 1] = std::numeric_limits<int>::min();
-    //update connection count for neighbors of first selected
-    for(Vertex neighbor : neighbors[max_degree_vertex-1]){
-        num_connected[neighbor - 1]++;
+        //don't want to select already selected vertex
+        num_connected[max_degree_vertex - 1] = std::numeric_limits<int>::min();
+        //update connection count for neighbors of first selected
+        for(Vertex neighbor : neighbors[max_degree_vertex-1]){
+            num_connected[neighbor - 1]++;
+        }
     }
 
-    while(not unselected_vertices.empty()){
+        while(not unselected_vertices.empty()){
         Vertex max_connections_vertex = 0;
         int max_connections = -1;
         for(Vertex vertex : unselected_vertices){
@@ -807,7 +894,7 @@ void Graph::peel_graph_ordered(int peeling_degree, const NeighborList& neighbors
         }
     }
     remove_vertices(small_degree_vertices);
-    std::cout << "peeled: " << ncount() << ", " << ecount() << std::endl;
+//    std::cout << "peeled: " << ncount() << ", " << ecount() << std::endl;
 }
 
 void Graph::remove_vertex(Vertex remove) {
@@ -861,7 +948,7 @@ void Graph::remove_dominated_vertices(const NeighborList& neighbors) {
         }
     }
     remove_vertices(dominated_vertices);
-    std::cout << "dominated: " << ncount() << ", " << ecount() << std::endl;
+//    std::cout << "dominated: " << ncount() << ", " << ecount() << std::endl;
 }
 
 
@@ -931,7 +1018,7 @@ std::set<Vertex> Graph::find_clique(int nrbranches) const{
     int ncliques = 0;
     int pval = 0;
     if(nrbranches == -1)
-        nrbranches = int(ncount())/10 + 10;
+        nrbranches = std::max(int(ncount())/10 + 10, 100);
     std::vector<int> one_weights(ncount(), 1);
     int rval = COLORclique_ostergard(&cliques, &ncliques, int(ncount()), int(ecount()), shifted_elist().data(),
                                      one_weights.data(), COLOR_MAXINT, &pval, nrbranches);
@@ -940,11 +1027,48 @@ std::set<Vertex> Graph::find_clique(int nrbranches) const{
     std::set<Vertex> clique;
     std::transform(cliques[0].members, cliques[0].members+cliques[0].count, std::inserter(clique, clique.end()), [](int v){return (Vertex)v+1;});
 
-    std::cout << "Found clique of size " << pval << std::endl;
+//    std::cout << "Found clique of size " << pval << std::endl;
     return clique;
 }
 
+int Graph::constraint_graph_width() {
+    Graph g = *this;
+    g.peel_graph_ordered(1); //remove isolated vertices
+    NeighborList neighbors = g.get_neighbor_list();
+    int k = std::min_element(neighbors.begin(), neighbors.end(), [](const std::set<Vertex>& d_1, const std::set<Vertex>& d_2){return d_1.size() < d_2.size();})->size();
+    while(g.ncount()){
+        k++;
+        std::cout << k << std::endl;
+        unsigned int current_node_count = g.ncount();
+        while(true){
+            g.peel_graph_ordered(k);
+            if(current_node_count == g.ncount() or g.ncount() == 0){
+                break;
+            }
+            current_node_count = g.ncount();
+        }
+    }
+    return k;
+}
 
+int Graph::constraint_graph_ordering() {
+    int k = constraint_graph_width();
+    int n = int(_ncount);
+    Permutation ordering(n);
+    Graph g = *this;
+    for(int i = int(n); n >= 1; n--){
+        NeighborList neighbors = g.get_neighbor_list();
+        for(Vertex v = 1; v <= g.ncount(); v++){
+            if(neighbors[v].size() <= k+1){
+                ordering[n-1] = v;
+                //problem make vertex the i-th vertex but vertex lable changes...
+            }
+        }
+    }
+
+
+    return 0;
+}
 
 
 bool try_color_swap(Vertex max_saturated_vertex, const NeighborList &neighbors, Coloring &coloring,

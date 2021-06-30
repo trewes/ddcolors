@@ -2,9 +2,9 @@
 
 
 void Statistics::print() const{
-    std::cout << "Size of decision diagram at the end: " << decision_diagram_size << " nodes, " << decision_diagram_arcs
-    << " arcs and width " << decision_diagram_width << "." << std::endl;
     if(num_conflicts) {//if we never found any conflicts that means we used the exact decision diagram
+        std::cout << "Size of decision diagram at the end: " << decision_diagram_size << " nodes, " << decision_diagram_arcs
+                  << " arcs and width " << decision_diagram_width << "." << std::endl;
         std::cout << "Conflicts found: " << num_conflicts;
         if (num_longest_path_conflicts) {
             std::cout << " with and additional " << num_longest_path_conflicts << " conflicts found in preprocessing.";
@@ -68,11 +68,12 @@ std::ostream& operator<<(std::ostream& s, std::chrono::duration<double> duration
     duration -= milliseconds;
     s << milliseconds.count() << "ms";
 
-    if(not milliseconds.count()) {
-        auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(duration);
-        duration -= microseconds;
-        s <<" "<< microseconds.count() << "us";
-    }
+    //not use microseconds, not necessary for benchmarks
+//    if(not milliseconds.count()) {
+//        auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(duration);
+//        duration -= microseconds;
+//        s <<" "<< microseconds.count() << "us";
+//    }
 }
 
 DDColors::DDColors(const char *filename, Options options) : graph(filename), opt(options), stats(Statistics()){
@@ -91,22 +92,28 @@ void DDColors::initialise(){
     if(opt.preprocess_graph){
         preprocessing_graph();
     }
+    else if(opt.use_clique_in_ordering){
+        clique = graph.find_clique();
+    }
 
+    if(opt.ordering_random_tiebreaks){
+        graph.use_random_tiebreaks();
+    }
     Permutation graph_ordering;
     switch (opt.vertex_ordering) {
         case Graph::Lexicographic:
-            //still use some heuristic for upper bound, which one?
-            heuristic_bound = int(graph.dsatur(graph_ordering).size());
+            //still use some heuristic for upper bound
+            heuristic_bound = int(graph.dsatur(graph_ordering, clique).size());
             graph_ordering = identity(graph.ncount()); //reset ordering
             break;
         case Graph::Dsatur:
-            heuristic_bound = int(graph.dsatur(graph_ordering).size());
+            heuristic_bound = int(graph.dsatur(graph_ordering, clique).size());
             break;
         case Graph::Dsatur_original:
-            heuristic_bound = int(graph.dsatur_original(graph_ordering).size());
+            heuristic_bound = int(graph.dsatur_original(graph_ordering, clique).size());
             break;
         case Graph::Max_Connected_degree:
-            heuristic_bound = int(graph.max_connected_degree_coloring(graph_ordering).size());
+            heuristic_bound = int(graph.max_connected_degree_coloring(graph_ordering, clique).size());
             break;
     }
 
@@ -148,7 +155,7 @@ int DDColors::run() {
         stats.decision_diagram_size = num_nodes(dd);
         stats.decision_diagram_arcs = num_arcs(dd);
         stats.decision_diagram_width = get_width(dd);
-        double ip_flow = compute_flow_solution(dd, IP, heuristic_bound);//TODO does upper bound make it better?
+        double ip_flow = compute_flow_solution(dd, IP, (opt.use_upperbound_in_IP ? heuristic_bound : -1), opt.formulation);//TODO does upper bound make it better?
         lower_bound = int(ip_flow);
         stats.num_ip_solved = 1;
     }
@@ -178,7 +185,7 @@ int DDColors::basic_iterative_refinement() {
     longest_path_refinement(dd);
 
     while (not found_solution){
-        double flow_value = compute_flow_solution(dd, model, -1); // = obj(F)
+        double flow_value = compute_flow_solution(dd, model, (opt.use_upperbound_in_IP ? heuristic_bound : -1), opt.formulation); // = obj(F)
         int flow_bound = (model == IP) ? int(std::round(flow_value)) : (int)std::ceil(flow_value);
         if(model == IP) stats.num_ip_solved++; else stats.num_lp_solved++;
         if(flow_bound > lower_bound){
@@ -415,7 +422,7 @@ int DDColors::heuristic_iterative_refinement() {
         }loops--;
 
 
-        double flow_value = compute_flow_solution(dd, model, upper_bound); // = obj(F)
+        double flow_value = compute_flow_solution(dd, model, (opt.use_upperbound_in_IP ? upper_bound : -1), opt.formulation); // = obj(F)
         int flow_bound = (model == IP) ? int(std::round(flow_value)) : (int)std::ceil(flow_value);
         if(model == IP) stats.num_ip_solved++; else stats.num_lp_solved++;
         if(flow_bound > lower_bound){
@@ -486,7 +493,7 @@ int DDColors::heuristic_iterative_refinement_NUMERICALLY_SAFE() {
 
     while (lower_bound < upper_bound){
 
-        double flow_value = compute_flow_solution(dd, model, upper_bound); // = obj(F)
+        double flow_value = compute_flow_solution(dd, model, upper_bound, Normal); // = obj(F)
         if(model == IP) stats.num_ip_solved++; else stats.num_lp_solved++;
 
         if((model == IP) and (int(flow_value) > lower_bound)) {
@@ -810,20 +817,19 @@ DDColors::find_conflict_and_primal_heuristic(DecisionDiagram &dd, double flow_va
 }
 
 
-void DDColors::preprocessing_graph(int lower_bound) {
+void DDColors::preprocessing_graph() {
     int n = int(graph.ncount());
     std::cout << "original graph: " << graph.ncount() << ", " << graph.ecount() << std::endl;
-
-    int clique_size = lower_bound;
+    int clique_size = opt.preprocessing_hint;
    //preprocessing loop until graph doesn't change any further
-    unsigned int num_nodes_previous_iteration = graph._ncount;
+    unsigned int num_nodes_previous_iteration = graph.ncount();
     while(true){
-        num_nodes_previous_iteration = graph._ncount;
+        num_nodes_previous_iteration = graph.ncount();
 
         //dominated vertices are not part of a clique, can remove this before searching for one
         graph.remove_dominated_vertices();
         //look for clique to get lower bound on chromatic number
-        std::set<Vertex> clique = graph.find_clique(50); //TODO how many branches
+        std::set<Vertex> tclique = graph.find_clique(); //TODO how many branches
         clique_size = std::max(clique_size, int(clique.size()));
 
         graph.peel_graph_ordered(clique_size);
@@ -834,11 +840,16 @@ void DDColors::preprocessing_graph(int lower_bound) {
             break;
         }
 
-        if(num_nodes_previous_iteration == graph._ncount)
+        if(num_nodes_previous_iteration == graph.ncount()){
+            //also found a clique but did not remove any vertices so the clique is still valid!
+            if(opt.use_clique_in_ordering)
+                clique = tclique;
             break;
+        }
     }
-    if(graph.ncount() == n) throw std::runtime_error("no change");
-    stats.start_time = std::chrono::steady_clock::now();//??
+//    if(graph.ncount() == n) throw std::runtime_error("no change");
+    stats.start_time = std::chrono::steady_clock::now();//TODO include preprocessing in runtime?
+    std::cout << "simplified graph: " << graph.ncount() << ", " << graph.ecount() << std::endl;
 }
 
 
