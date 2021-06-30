@@ -4,7 +4,6 @@
 SET(USE_SOLVER "CPLEX") # "QSOPT" "GUROBI", "CPLEX"
 
 
-
 SET(QSOPT_HOME_EXPORT QSOPT_HOME=/opt/qsopt/)
 #SET(QSOPT_HOME_EXPORT QSOPT_HOME=C:/Users/Timo/Documents/Uni/BA/Code/qsopt)
 
@@ -51,23 +50,23 @@ ELSE()
     IF(USE_SOLVER STREQUAL "GUROBI")
         SET(SOLVER_EXPORT ${GUROBI_HOME_EXPORT})
     ENDIF()
-        IF(USE_SOLVER STREQUAL "CPLEX")
+    IF(USE_SOLVER STREQUAL "CPLEX")
         SET(SOLVER_EXPORT ${CPLEX_HOME_EXPORT})
     ENDIF()
     INCLUDE(ExternalProject)
     MESSAGE(STATUS ${SOLVER_EXPORT})
     ExternalProject_Add(EXACTCOLORS
-            GIT_REPOSITORY https://github.com/heldstephan/exactcolors
-            DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/exactcolors
-            SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/exactcolors
-            PATCH_COMMAND cmake -E echo "Skipping patch step."
-            UPDATE_COMMAND cmake -E echo "Skipping update step."
-            CONFIGURE_COMMAND cmake -E echo "Skipping configure step."
-            BUILD_COMMAND make clean && export ${SOLVER_EXPORT} && cmake -E echo "HI" && make "libexactcolor.a" && cd mwis_sewell && make "libsewell.a"
-            BUILD_IN_SOURCE 1
-#            EXCLUDE_FROM_ALL TRUE
-            INSTALL_COMMAND cmake -E echo "Skipping install step."
-            )
+                        GIT_REPOSITORY https://github.com/heldstephan/exactcolors
+                        DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/exactcolors
+                        SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/exactcolors
+                        PATCH_COMMAND cmake -E echo "Skipping patch step."
+                        UPDATE_COMMAND cmake -E echo "Skipping update step."
+                        CONFIGURE_COMMAND cmake -E echo "Skipping configure step."
+                        BUILD_COMMAND make clean && export ${SOLVER_EXPORT} && cmake -E echo "HI" && make "libexactcolor.a" && cd mwis_sewell && make "libsewell.a"
+                        BUILD_IN_SOURCE 1
+                        #            EXCLUDE_FROM_ALL TRUE
+                        INSTALL_COMMAND cmake -E echo "Skipping install step."
+                        )
     ADD_DEPENDENCIES(${PROJECT_NAME} EXACTCOLORS)
     ExternalProject_Get_Property(EXACTCOLORS SOURCE_DIR)
     TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PRIVATE ${SOURCE_DIR})

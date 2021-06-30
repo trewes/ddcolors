@@ -19,7 +19,7 @@ extern "C" {
 typedef std::set<unsigned int> ColorClass;
 typedef std::vector<ColorClass> Coloring;
 
-std::ostream& operator<<(std::ostream& s, std::chrono::duration<double> duration);
+std::ostream &operator<<(std::ostream &s, std::chrono::duration<double> duration);
 
 struct Statistics{
     size_t decision_diagram_size = 0;
@@ -34,7 +34,9 @@ struct Statistics{
     std::chrono::duration<double> execution_time;
     std::chrono::duration<double> tt_lower_bound;
     std::chrono::duration<double> tt_upper_bound;
+
     void print() const;
+
     static void pretty_time(std::chrono::duration<double> duration);
     //TODO maybe add stats for how much time was spent where
 //    std::chrono::duration<double> lp_time;
@@ -43,7 +45,6 @@ struct Statistics{
 //    std::chrono::duration<double> conflict_detection;
 //    std::chrono::duration<double> conflict_separation;
 };
-
 
 
 struct Options{
@@ -62,7 +63,7 @@ struct Options{
     //TODO mention this in BA
     PathDecomposition path_decomposition = PreferOneArcs;//AvoidConflicts;
     bool use_upperbound_in_IP = false;
-    bool safe_LP_bounds  = false;
+    bool safe_LP_bounds = false;
     Formulation formulation = Normal;
     bool ordering_random_tiebreaks = false;
     bool use_clique_in_ordering = false;//TODO add option of this to program call
@@ -74,7 +75,9 @@ struct Options{
 class DDColors{
 public:
     DDColors(const char *filename, Options options = Options());
+
     DDColors(Graph in_graph, Options options = Options());
+
     ~DDColors();
 
     int run();
@@ -83,7 +86,8 @@ public:
 
     //pass dd here as a copy so we keep flow on original dd
     Coloring primal_heuristic(DecisionDiagram dd);
-    static Coloring primal_heuristic(DecisionDiagram dd, const NeighborList& neighbors);
+
+    static Coloring primal_heuristic(DecisionDiagram dd, const NeighborList &neighbors);
 
     int heuristic_iterative_refinement();
 
@@ -105,7 +109,9 @@ private:
 
     //handle updating of information when a new better bound is found
     void update_lower_bound(int flow_bound);
+
     void update_upper_bound(int coloring_size);
+
     void print_bounds() const;
 
 
