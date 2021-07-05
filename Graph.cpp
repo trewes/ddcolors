@@ -36,14 +36,14 @@ T random_element(std::set<T> const &v) {
 
 Permutation identity(size_t size) {
     Permutation identity(size);
-    for(int i = 1; i <= size; i++)
+    for(unsigned int i = 1; i <= size; i++)
         identity[i - 1] = i;
     return identity;
 }
 
 Permutation perm_inverse(const Permutation &perm) {
     Permutation inverse(perm.size());
-    for(int i = 1; i <= perm.size(); i++){
+    for(unsigned int i = 1; i <= perm.size(); i++){
         inverse[perm[i - 1] - 1] = i;
     }
     return inverse;
@@ -53,7 +53,7 @@ Permutation perm_inverse(const Permutation &perm) {
 NeighborList Graph::get_neighbor_list() const {
     NeighborList list;
     list.resize(_ncount);
-    for(size_t i = 0; i < _ecount; i++){
+    for(unsigned int i = 0; i < _ecount; i++){
         list[_elist[2 * i] - 1].insert(list[_elist[2 * i] - 1].end(), _elist[2 * i + 1]);
         list[_elist[2 * i + 1] - 1].insert(list[_elist[2 * i + 1] - 1].end(), _elist[2 * i]);
     }
@@ -111,9 +111,6 @@ Graph::Graph(std::string g6_string) : _ncount(0), _ecount(0) {
     read_graph6_string(std::move(g6_string));
 }
 
-Graph::~Graph() {
-//    delete opt;
-}
 
 void Graph::read_dimacs(const char *filename) {
     std::ifstream file(filename);
@@ -358,7 +355,7 @@ Coloring Graph::dsatur(Permutation &ordering, const NeighborList &neighbors, con
         }
         //select max saturated vertex, at random if there exist multiple
         if(saturated_tied_max_degrees.size() > 1 and random_tiebreaks){
-            max_saturated_vertex = int(random_element(saturated_tied_max_degrees));
+            max_saturated_vertex = random_element(saturated_tied_max_degrees);
         }
         ordering.push_back(max_saturated_vertex);
         unselected_vertices.erase(max_saturated_vertex);
@@ -473,7 +470,7 @@ Graph::dsatur_original(Permutation &ordering, const NeighborList &neighbors, con
         Vertex max_degree_vertex = 0;
         std::set<Vertex> tied_max_degree;
         int max_degree = -1;
-        for(size_t vertex = 1; vertex <= int(_ncount); vertex++){
+        for(Vertex vertex = 1; vertex <= _ncount; vertex++){
             if(int(neighbors[vertex - 1].size()) > max_degree){
                 max_degree = int(neighbors[vertex - 1].size());
                 max_degree_vertex = vertex;
@@ -536,7 +533,7 @@ Graph::dsatur_original(Permutation &ordering, const NeighborList &neighbors, con
         }
         //select max saturated vertex, at random if there exist multiple
         if(saturated_tied_max_degrees.size() > 1 and random_tiebreaks){
-            max_saturated_vertex = int(random_element(saturated_tied_max_degrees));
+            max_saturated_vertex = random_element(saturated_tied_max_degrees);
         }
         ordering.push_back(max_saturated_vertex);
         unselected_vertices.erase(max_saturated_vertex);
@@ -648,7 +645,7 @@ Coloring Graph::max_connected_degree_coloring(Permutation &ordering, const Neigh
         Vertex max_degree_vertex = 0;
         std::set<Vertex> tied_max_degree;
         int max_degree = -1;
-        for(size_t vertex = 1; vertex <= int(_ncount); vertex++){
+        for(Vertex vertex = 1; vertex <= _ncount; vertex++){
             if(int(neighbors[vertex - 1].size()) > max_degree){
                 max_degree = int(neighbors[vertex - 1].size());
                 max_degree_vertex = vertex;
@@ -708,7 +705,7 @@ Coloring Graph::max_connected_degree_coloring(Permutation &ordering, const Neigh
         }
         //select max saturated vertex, at random if there exist multiple
         if(saturated_tied_max_degrees.size() > 1 and random_tiebreaks){
-            max_saturated_vertex = int(random_element(saturated_tied_max_degrees));
+            max_saturated_vertex = random_element(saturated_tied_max_degrees);
         }
         ordering.push_back(max_saturated_vertex);
         unselected_vertices.erase(max_saturated_vertex);
@@ -749,7 +746,6 @@ Coloring Graph::max_connected_degree_coloring(Permutation &ordering, const Neigh
         }
 
         //new vertex has been selected so update the the number of colored neighbors for that vertex's neighbors
-        int msv_color = vertex_color[max_saturated_vertex - 1];
         for(Vertex vertex : neighbors[max_saturated_vertex - 1]){
             //possibly check that neighbor has been selected, i.e. it's level is equal to numeric_limits<int>::min()
             if(num_selected_neighbors[vertex - 1] != std::numeric_limits<int>::min()){
@@ -799,7 +795,7 @@ Permutation Graph::max_connected_degree_ordering(const NeighborList &neighbors, 
         Vertex max_degree_vertex = 0;
         int max_degree = -1;
         //find max degree vertex and select it first
-        for(size_t vertex = 1; vertex <= int(_ncount); vertex++){
+        for(Vertex vertex = 1; vertex <= _ncount; vertex++){
             if(int(neighbors[vertex - 1].size()) > max_degree){
                 max_degree = int(neighbors[vertex - 1].size());
                 max_degree_vertex = vertex;
@@ -891,7 +887,7 @@ void Graph::peel_graph_ordered(int peeling_degree, const NeighborList &neighbors
             small_degree_vertices.insert(small_degree_vertices.end(), i);
         }
     }
-    remove_vertices(small_degree_vertices);
+    remove_vertices_together(small_degree_vertices);
 //    std::cout << "peeled: " << ncount() << ", " << ecount() << std::endl;
 }
 
@@ -904,10 +900,6 @@ void Graph::remove_vertex(Vertex remove) {
         } else{
             if(_elist[2 * edge_index + 1] > remove) _elist[2 * edge_index + 1]--;
             if(_elist[2 * edge_index] > remove) _elist[2 * edge_index]--;
-        }
-        bool a = false;
-        if(_elist[2 * edge_index] <= 1 or _elist[2 * edge_index + 1] <= 1){
-            a = true;
         }
     }
     _ncount--;
@@ -922,6 +914,28 @@ void Graph::remove_vertices(const std::set<Vertex> &to_remove) {
 }
 
 
+int num_larger(Vertex v, const std::set<Vertex>& set){
+    if(set.empty())
+        return 0;
+    auto num = std::count_if(set.begin(), set.end(), [&v](Vertex set_vertex){return v > set_vertex;});
+    return int(num);
+}
+
+void Graph::remove_vertices_together(const std::set<Vertex> &to_remove) {
+    for(int edge_index = int(_ecount) - 1; edge_index >= 0; edge_index--){
+        if(to_remove.count(_elist[2 * edge_index]) or to_remove.count(_elist[2 * edge_index + 1])){
+            _elist.erase(std::next(_elist.begin(), 2 * edge_index + 1));
+            _elist.erase(std::next(_elist.begin(), 2 * edge_index));
+            _ecount--;
+        } else{
+            _elist[2 * edge_index + 1] -= num_larger(_elist[2 * edge_index + 1], to_remove);
+            _elist[2 * edge_index] -= num_larger(_elist[2 * edge_index], to_remove);
+        }
+    }
+    _ncount -= to_remove.size();
+}
+
+
 void Graph::remove_dominated_vertices() {
     NeighborList neighbors = get_neighbor_list();
     remove_dominated_vertices(neighbors);
@@ -931,9 +945,10 @@ void Graph::remove_dominated_vertices() {
 void Graph::remove_dominated_vertices(const NeighborList &neighbors) {
 
     std::set<Vertex> dominated_vertices;
-    //TDOD only check for dominated if one set of neighbors is larger than the other
     for(Vertex v = 1; v <= _ncount; v++){
         for(Vertex w = v + 1; w <= _ncount; w++){
+            if(neighbors[v - 1].count(w))
+                continue;
             if(std::includes(neighbors[v - 1].begin(), neighbors[v - 1].end(),
                              neighbors[w - 1].begin(), neighbors[w - 1].end())){
                 dominated_vertices.insert(dominated_vertices.end(), w);
@@ -944,14 +959,14 @@ void Graph::remove_dominated_vertices(const NeighborList &neighbors) {
             }
         }
     }
-    remove_vertices(dominated_vertices);
+    remove_vertices_together(dominated_vertices);
 //    std::cout << "dominated: " << ncount() << ", " << ecount() << std::endl;
 }
 
 
 void Graph::vertex_fusion(const std::set<Vertex> &clique) {
     NeighborList neighbors = get_neighbor_list();
-    vertex_fusion(clique, neighbors);;
+    vertex_fusion(clique, neighbors);
 }
 
 
@@ -1032,13 +1047,13 @@ int Graph::constraint_graph_width() {
     Graph g = *this;
     g.peel_graph_ordered(1); //remove isolated vertices
     NeighborList neighbors = g.get_neighbor_list();
+    //begin peeling starting from the minimum degree
     int k = std::min_element(neighbors.begin(), neighbors.end(),
                              [](const std::set<Vertex> &d_1, const std::set<Vertex> &d_2) {
                                  return d_1.size() < d_2.size();
                              })->size();
     while(g.ncount()){
         k++;
-        std::cout << k << std::endl;
         unsigned int current_node_count = g.ncount();
         while(true){
             g.peel_graph_ordered(k);
@@ -1051,23 +1066,32 @@ int Graph::constraint_graph_width() {
     return k;
 }
 
-int Graph::constraint_graph_ordering() {
-    int k = constraint_graph_width();
+Permutation Graph::constraint_graph_ordering() {
+    int width = constraint_graph_width();
     int n = int(_ncount);
     Permutation ordering(n);
-    Graph g = *this;
-    for(int i = int(n); n >= 1; n--){
-        NeighborList neighbors = g.get_neighbor_list();
-        for(Vertex v = 1; v <= g.ncount(); v++){
-            if(neighbors[v].size() <= k + 1){
-                ordering[n - 1] = v;
-                //problem make vertex the i-th vertex but vertex lable changes...
+    std::set<Vertex> unselected_vertices;
+    NeighborList neighbors = get_neighbor_list();
+    std::vector<int> degree(_ncount);
+    for(Vertex i = 1; i <= _ncount; ++i){
+        unselected_vertices.insert(unselected_vertices.end(), i);
+        degree[i - 1] = int(neighbors[i - 1].size());
+    }
+
+    for(int i = n; i >= 1; i--){
+        for(auto v_it = unselected_vertices.rbegin(); v_it != unselected_vertices.rend(); v_it++){
+            Vertex v = *v_it;
+            if(degree[v - 1] <= width + 1){
+                ordering[i - 1] = v;
+                unselected_vertices.erase(v);
+                for(auto neighbor : neighbors[v - 1]){
+                    degree[neighbor - 1]--;
+                }
+                break;
             }
         }
     }
-
-
-    return 0;
+    return ordering;
 }
 
 
@@ -1097,7 +1121,7 @@ bool try_color_swap(Vertex max_saturated_vertex, const NeighborList &neighbors, 
                     vertex_color[max_saturated_vertex - 1] = int(j);
                     vertex_color[u - 1] = int(k);
                     k = coloring.size();
-                    j = coloring.size();
+                    j = coloring.size();//exit loops, but exiting anyways
                     return true;//was able to swap colors
                 }
             }

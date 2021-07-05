@@ -45,7 +45,8 @@ public:
     Graph(const char *filename);
 
     Graph(std::string g6_string);//only used this for testing
-    ~Graph();
+
+    ~Graph() = default;
 
     //get information about the graph
     NeighborList get_neighbor_list() const;
@@ -78,7 +79,7 @@ private:
     //setting use randomness during the coloring heuristic when breaking a tie
     bool random_tiebreaks = false;
 public:
-    enum OrderType {Lexicographic, Dsatur, Dsatur_original, Max_Connected_degree};
+    enum OrderType {Lexicographic, Dsatur, Dsatur_original, Max_Connected_degree, MinWidth};
 
     Graph perm_graph(const Permutation &perm) const;
 
@@ -116,6 +117,8 @@ public:
 
     void remove_vertices(const std::set<Vertex> &to_remove);
 
+    void remove_vertices_together(const std::set<Vertex> &to_remove);
+
     //removes the k last vertices, no relabeling of vertices is necessary
     void remove_last_vertices(int num_to_be_removed);
 
@@ -134,6 +137,7 @@ public:
 
     //only applicable for deciding k-colorability for given k = size of some clique
     //can not help at all if the chromatic number is greater than the largest clique
+    //TODO remove for hand-in
     void vertex_fusion(const std::set<Vertex> &clique);
 
     void vertex_fusion(const std::set<Vertex> &clique, const NeighborList &neighbors);
@@ -145,7 +149,7 @@ public:
 
     int constraint_graph_width();
 
-    int constraint_graph_ordering();
+    Permutation constraint_graph_ordering();
 
 };
 

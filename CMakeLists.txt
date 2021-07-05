@@ -17,8 +17,7 @@ PROJECT(ddcolors)
 
 SET(CMAKE_CXX_STANDARD 20)
 
-SET(SOURCE_FILES main.cpp Graph.cpp Graph.h DecisionDiagram.cpp DecisionDiagram.h DDColors.cpp DDColors.h scip_interface.cpp scip_interface.h)
-#set(SOURCE_FILES ${SOURCE_FILES} asc2bin.c asc2bin.c)
+SET(SOURCE_FILES main.cpp Graph.cpp Graph.h DecisionDiagram.cpp DecisionDiagram.h DDColors.cpp DDColors.h)# scip_interface.cpp scip_interface.h)
 
 
 ####################

@@ -9,9 +9,11 @@
 //#include <cstdio>
 //#include <gurobi_c.h>
 
-#include "scip_interface.h"
+//#include "scip_interface.h"
 
-
+//TODO soft time limit??
+//TODO option pass initial upper bound
+//TODO option to output or write coloring to a file when found
 
 void print_help(){
     std::cout<<"Usage: ddcolors.exe [options] graph"<<std::endl;
@@ -20,22 +22,22 @@ void print_help(){
     std::cout<<"-i|--info               :Enables output of information gathered during the algorithm."<<std::endl;
     std::cout<<"-t|--time               :Enables output of execution time."<<std::endl;
     std::cout<<"-m|--method arg         :Which algorithm is to be run to get the chromatic number: i for iterative refinement (default),"<<std::endl;//b for basic as hidden option
-    std::cout<<"                         e for exact compilation and h for heuristic only (note that this gives only an upper bound)."<<std::endl;
-    std::cout<<"-o|--ordering arg       :Option of which vertex ordering is to be used, standard is Dsatur."<<std::endl;
-    std::cout<<"                         l for lexicographic, m for max connected degree, d for dsatur ordering (default)."<<std::endl;
-    std::cout<<"-r|--relaxation arg     :IP solver relaxation, standard is LP first."<<std::endl;
-    std::cout<<"                         i for IP only, l for LP first and then IP (default), s for switching between IP and LP."<<std::endl;
+    std::cout<<"                         e for exact compilation, h for heuristic (only an upper bound) and f to compute the fractional chromatic number."<<std::endl;
+    std::cout<<"-o|--ordering arg       :Option of which vertex ordering is to be used. d for dsatur ordering (default)."<<std::endl;
+    std::cout<<"                         l for lexicographic, m for max connected degree, w for minimum width ordering."<<std::endl;
+    std::cout<<"-r|--relaxation arg     :IP solver relaxation: l for LP first and then IP (default), i for IP only"<<std::endl;
+    std::cout<<"                         and m(X) for solving IP at every Xth iteration instead of the normal LP (default X=100)."<<std::endl;
     std::cout<<"-l|--longest_paths arg  :The number of iterations the longest path preprocessing should be applied, standard is 100."<<std::endl;
     std::cout<<"-p|--preprocessing      :Enables the use of peeling and removing dominated vertices of the graph in a preprocessing step."<<std::endl;
-    std::cout<<"-a|--arc_redirection    :Redirects arcs to the most similar node in the next level."<<std::endl;
-    std::cout<<"-c|--conflicts arg      :Detect and resolve conflicts in a flow solution after chosen method."<<std::endl;
-    std::cout<<"                         s for single conflict, m for multiple conflicts (default), f for conflicts with largest flow."<<std::endl;
-    std::cout<<"-d|--decomposition arg  :Specifies the heuristic used in the path decomposition of the flow."<<std::endl;
-    std::cout<<"                         o is for PreferOneArcs (default), a for paths avoiding conflicts and zero for PreferZeroArcs."<<std::endl;
-    std::cout<<"-u|--use_bound          :Makes the solver use the upper bound as bound on the variables in the IP/LP to solve."<<std::endl;
-    std::cout<<"-s|--safe_bound         :Uses technique described be Neumaier to get safe lower bounds from the LP solutions."<<std::endl;
-    std::cout<<"-f|--formulation arg    :Allows slight changes to the way the IP/LP is formulated. n id for normal (default)"<<std::endl;
-    std::cout<<"                         e is for constraint of setting first 1-arc to 1, b for add the variable bounds as constraints, -a for both."<<std::endl;
+    std::cout<<"-a|--arc_redirection    :Redirects arcs to the most similar node in the next level when constructing the next relaxed decision diagram."<<std::endl;
+    std::cout<<"-c|--conflicts arg      :Detect and resolve conflicts in a flow solution after chosen method. m for multiple conflicts (default),"<<std::endl;
+    std::cout<<"                         s for single conflict, f(X) for conflicts with associated flow larger than 1e^-X (default X=5, choose 1<=X<=7)."<<std::endl;
+    std::cout<<"-d|--decomposition arg  :Specifies the heuristic used in the path decomposition of the flow. o is for preferring 1-arcs (default),"<<std::endl;
+    std::cout<<"                         a for paths avoiding conflicts and z for preferring 0-arcs."<<std::endl;
+    std::cout<<"-f|--formulation arg    :Allows slight changes to the way the IP/LP is formulated. n is for normal (default), e is for setting first 1-arc to 1, o to add bound on objective value,"<<std::endl;
+    std::cout<<"                         b for adding the variable bounds as constraints, c for using obtained coloring bound as upper bound on vars and r to let 0-arcs always be continuous"<<std::endl;
+    std::cout<<"-k|--clique             :Looks for a clique whose vertices are fixed as the first ones in the ordering and in the upper bound heuristic."<<std::endl;
+    std::cout<<"-z|--randomness         :Enables random tie breaks in the coloring heuristic."<<std::endl;
 }
 
 #define MAX_PNAME_LEN 128
@@ -252,7 +254,6 @@ int main(int argc, char *argv[]) {
 
     if(0){
         Options opt{};
-        opt.relaxation = Switch_LP_IP; //opt.algorithm = Options::HeuristicRefinement;
         //opt.redirect_arcs = RedirectArcs::MostSimilarNode;
         //opt.vertex_ordering = Graph::OrderType::Lexicographic;
         opt.num_longest_path_iterations = 1;
@@ -293,7 +294,7 @@ int main(int argc, char *argv[]) {
         opt.vertex_ordering = Graph::Lexicographic;
         opt.find_conflicts = SingleConflict;
         opt.algorithm = Options::BasicRefinement;
-        opt.relaxation = LP_First;
+        opt.relaxation = Options::LP_First;
 //        opt.algorithm = Options::ExactCompilation;
         DDColors ddcolors("../Graphs/myciel4.col", opt);
 //        DDColors ddcolors(g, opt);
@@ -501,7 +502,6 @@ int main(int argc, char *argv[]) {
         Graph g(filename);
 
         Options opt;
-        opt.multiple_dsatur = 1;
         opt.algorithm = Options::HeuristicOnly;
 
         std::cout << "Heuristic found coloring of size " << DDColors(g, opt).run() << std::endl;
@@ -565,8 +565,54 @@ int main(int argc, char *argv[]) {
     if(0){
         char const *filename = (0) ? "../Graphs/r250.1c.col" : argv[1];
         Graph g(filename);
-        std::cout << "width is " << g.constraint_graph_width() << std::endl;
+//        int width = g.constraint_graph_width();
+//        std::cout << "width is " << width << std::endl;
+
+        Permutation o;
+        g.max_connected_degree_coloring(o);
+        g = g.perm_graph(perm_inverse(o));
+        DecisionDiagram dd = exact_decision_diagram(g);
+        dd = exact_decision_diagram_test(g, g.get_neighbor_list());
+
+//compare the two orderings, namely the constraint graph ordering with some other
+//        o = g.constraint_graph_ordering();
+//        g = g.perm_graph(perm_inverse(o));
+//        dd = exact_decision_diagram(g);
+
+
+
     }
+
+    if(0){//test for function remove_vertices_together
+        bool test = false;
+        char const *filename = (test) ? "../Graphs/r250.1c.col" : argv[1];
+        Graph g(filename);
+        Graph h = g;
+        std::cout << "Equal: " << (h.get_neighbor_list() == g.get_neighbor_list()) << std::endl;
+        NeighborList neighbors = g.get_neighbor_list();
+        int peeling_degree = (test) ? 20 : std::atoi(argv[2]);
+        std::set<Vertex> small_degree_vertices;
+        for(Vertex i = 1; i <= g.ncount(); i++){
+            if(neighbors[i - 1].size() < peeling_degree){
+                small_degree_vertices.insert(small_degree_vertices.end(), i);
+            }
+        }
+        g.remove_vertices(small_degree_vertices);
+        h.remove_vertices_together(small_degree_vertices);
+        std::cout << "Equal: " << (h.get_neighbor_list() == g.get_neighbor_list()) << std::endl;
+        std::cout << "ncount: " << h.ncount() << " vs " << g.ncount() << std::endl;
+    }
+
+    if(0){
+        Graph g(4, 3, {1, 3, 3, 4, 4, 2});
+        Options options;
+        options.algorithm = Options::ExactCompilation;
+        options.vertex_ordering = Graph::Lexicographic;
+        DDColors ddrun(g, options);
+        ddrun.run();
+
+    }
+
 
 //return 0;
     Options dd_settings{};
@@ -585,16 +631,19 @@ int main(int argc, char *argv[]) {
             {"relaxation",      required_argument, nullptr, 'r'},
             {"longest_paths",   required_argument, nullptr, 'l'},
             {"decomposition",   required_argument, nullptr, 'd'},
-            {"use_bound",       no_argument,       nullptr, 'u'},
             {"safe_bound",      no_argument,       nullptr, 's'},
-            {"formulation",     no_argument,       nullptr, 'f'},
+            {"formulation",     required_argument, nullptr, 'f'},
+            {"clique",          optional_argument, nullptr, 'k'},
+            {"randomness",      no_argument,       nullptr, 'z'},
     };
 
-    while((opt = getopt_long(argc, argv, "hitap::uskc:o:r:l:m:d:f:", long_options, &option_index)) != -1){
+    while((opt = getopt_long(argc, argv, "hitap::k::zc:o:r:l:m:d:f:", long_options, &option_index)) != -1){
         switch(opt){
 
             default:
             case '?':                                                       //getopt itself will return an error message
+//                std::cout << "The specified argument " << char(opt) << " is not an option of ddcolors." << std::endl;
+//                std::cout << "Program failed." << std::endl;
                 return -1;
             case 'h':
                 print_help();
@@ -615,6 +664,8 @@ int main(int argc, char *argv[]) {
                     dd_settings.algorithm = Options::ExactCompilation;
                 } else if(*optarg == 'h'){
                     dd_settings.algorithm = Options::HeuristicOnly;
+                } else if(*optarg == 'f'){
+                    dd_settings.algorithm = Options::ExactFractionalNumber;
                 } else{
                     std::cout << "The method to compute the chromatic number was not correctly specified." << std::endl;
                     std::cout << "Program failed." << std::endl;
@@ -631,6 +682,16 @@ int main(int argc, char *argv[]) {
                     dd_settings.find_conflicts = MultipleConflicts;
                 } else if(*optarg == 'f'){
                     dd_settings.find_conflicts = LargestFlowConflict;
+                    std::string oa(optarg);
+                    if( oa != "f" ){
+                        oa.erase(oa.begin());
+                        dd_settings.largest_conflicts_limit = std::stoi(oa, nullptr, 10);
+                        if(not (1 <= dd_settings.largest_conflicts_limit and dd_settings.largest_conflicts_limit <= 7)){
+                            std::cout << "The minimum flow for selecting the conflicts not between 0.1 and 1e^-7." << std::endl;
+                            std::cout << "Program failed." << std::endl;
+                            return -1;
+                        }
+                    }
                 } else{
                     std::cout << "The conflict detection method was not correctly specified." << std::endl;
                     std::cout << "Program failed." << std::endl;
@@ -646,6 +707,8 @@ int main(int argc, char *argv[]) {
                     dd_settings.vertex_ordering = Graph::OrderType::Dsatur;
                 } else if(*optarg == 'o'){
                     dd_settings.vertex_ordering = Graph::OrderType::Dsatur_original;
+                } else if(*optarg == 'w'){
+                    dd_settings.vertex_ordering = Graph::OrderType::MinWidth;
                 } else{
                     std::cout << "The ordering type was not correctly specified." << std::endl;
                     std::cout << "Program failed." << std::endl;
@@ -655,12 +718,17 @@ int main(int argc, char *argv[]) {
 
             case 'r':
                 if(*optarg == 'i'){
-                    dd_settings.relaxation = IP_Only;
+                    dd_settings.relaxation = Options::IP_Only;
                 } else if(*optarg == 'l'){
-                    dd_settings.relaxation = LP_First;
-                } else if(*optarg == 's'){
-                    dd_settings.relaxation = Switch_LP_IP;
-                } else{
+                    dd_settings.relaxation = Options::LP_First;
+                } else if(*optarg == 'm'){
+                    dd_settings.relaxation = Options::Mixed;
+                    std::string oa(optarg);
+                    if( oa != "m" ){
+                        oa.erase(oa.begin());
+                        dd_settings.ip_frequency = std::stoi(oa, nullptr, 10);
+                    }
+                }else{
                     std::cout << "The IP relaxation method was not correctly specified." << std::endl;
                     std::cout << "Program failed." << std::endl;
                     return -1;
@@ -688,12 +756,6 @@ int main(int argc, char *argv[]) {
                     return -1;
                 }
                 break;
-            case 'u':
-                dd_settings.use_upperbound_in_IP = true;
-                break;
-            case 's':
-                dd_settings.safe_LP_bounds = true;
-                break;
             case 'f':
                 if(*optarg == 'n'){
                     dd_settings.formulation = Normal;
@@ -701,16 +763,26 @@ int main(int argc, char *argv[]) {
                     dd_settings.formulation = BoundConstraints;
                 } else if(*optarg == 'e'){
                     dd_settings.formulation = ExtraConstraints;
-                } else if(*optarg == 'a'){
-                    dd_settings.formulation = AllConstraints;
-                } else{
+                } else if(*optarg == 'o'){
+                    dd_settings.formulation = ObjectiveValueBound;
+                } else if(*optarg == 'c'){
+                    dd_settings.formulation = VarColorBound;
+                }else if(*optarg == 'r'){
+                    dd_settings.formulation = OneArcsContinuous;
+                }else{
                     std::cout << "The IP/LP formulation type was not correctly specified." << std::endl;
                     std::cout << "Program failed." << std::endl;
                     return -1;
                 }
                 break;
             case 'k':
-                dd_settings.use_clique_in_ordering = true;//TODO add long command/help
+                dd_settings.use_clique_in_ordering = true;
+                if(optarg != nullptr and *optarg != '\0'){
+                    dd_settings.clique_num_branches = std::stoi(optarg, nullptr, 10);
+                }
+                break;
+            case 'z':
+                dd_settings.ordering_random_tiebreaks = true;
                 break;
         }
     }
@@ -728,6 +800,16 @@ int main(int argc, char *argv[]) {
 
         if(dd_settings.algorithm == Options::HeuristicOnly){
             std::cout << "Heuristic bound of input graph is " << chromatic_number << std::endl;
+        }else if(dd_settings.algorithm == Options::ExactFractionalNumber){
+            std::cout << "Fractional chromatic number of input graph is " << ddcolors.fractional_chromatic
+            << " thus " << chromatic_number << " is a lower bound";
+            if(chromatic_number == ddcolors.upper_bound){
+                std::cout << ", this is equal to the upper bound of " << ddcolors.upper_bound
+                << " and therefore enough to determine the chromatic number." << std::endl;
+            } else{
+                std::cout << ", this is not equal to the upper bound of " << ddcolors.upper_bound
+                << " and therefore not enough to determine the chromatic number." << std::endl;
+            }
         } else
             std::cout << "Chromatic number of input graph is " << chromatic_number << std::endl;
     }

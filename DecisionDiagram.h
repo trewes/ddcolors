@@ -17,10 +17,11 @@
 
 extern "C" {
 #include "lp.h"
+#include <ilcplex/cplex.h> //needed for CPX_INFBOUND
 }
 
-//TODO decide on correct epsilon or better think it why it is necessary (-> simply floating point errors...)
-#define double_eps std::pow(10, -7)
+//catch resp. avoid floating point errors occurring during the path decomposition
+#define double_eps std::pow(10, -8)
 
 template<typename T>
 std::ostream &operator<<(std::ostream &s, const std::set<T> &set);
@@ -31,7 +32,8 @@ std::ostream &operator<<(std::ostream &s, const std::vector<T> &vec);
 typedef int LayerIndex;
 typedef int NodeIndex;
 typedef int EdgeIndex;
-typedef std::set<unsigned int> StateInfo;
+typedef unsigned int Vertex;
+typedef std::set<Vertex> StateInfo;
 
 struct Node{
     Node();
@@ -98,14 +100,13 @@ void separate_edge_conflict(DecisionDiagram &dd, const NeighborList &neighbors, 
 enum Model {IP, LP};
 enum ConflictResolution {SingleConflict, MultipleConflicts, LargestFlowConflict};
 enum PathDecomposition {PreferOneArcs, AvoidConflicts, PreferZeroArcs};
-enum Relaxation {IP_Only, LP_First, Switch_LP_IP};
 
 std::vector<PathLabelConflict>
 detect_edge_conflict(DecisionDiagram dd, const NeighborList &neighbors, double flow_val, Model model = IP,
                      ConflictResolution find_conflicts = SingleConflict,
                      PathDecomposition path_decomposition = PreferOneArcs);
 
-enum Formulation {Normal, BoundConstraints, ExtraConstraints, AllConstraints};
+enum Formulation {Normal, BoundConstraints, ExtraConstraints, VarColorBound, ObjectiveValueBound, OneArcsContinuous};
 
 double compute_flow_solution(DecisionDiagram &dd, Model model = IP, int coloring_upper_bound = -1,
                       Formulation formulation = Normal);
@@ -118,28 +119,14 @@ std::vector<PathLabelConflict>
 experimental_conflict_on_longest_path(const DecisionDiagram &dd, const NeighborList &neighbors);
 
 
+//attempt at implementing the min state compilation ordering,
+// always chooses the vertex appearing in the minimal number of parent states
+// resulte were not beneficial
 DecisionDiagram exact_decision_diagram_test(const Graph &g, const NeighborList &neighbors);
 
+//attempt at skipping the building step of the dd but not beneficial either, about the same result
+double exact_dd_compute_flow_solution(const NeighborList &neighbors, Model model = IP, int coloring_upper_bound = -1,
+                      Formulation formulation = Normal);
 
-//TODO for benchmarks: consider unlimited/more than 100 longest path iterations, seems quite beneficial (sometimes!)
-
-//TODO Idea: make some variables in LP integral, think about a heuristic which ones.
-//TODO One idea is: outgoing edges of root, or, all 1-arcs made integral (+ bound of 1) because obj value only depends on those
-
-
-//TODO and maybe use flow solution on previous dd to warmstart next LP/IP solving
-// for that, keep flow on edges that existed before (those may point to different nodes though) and on new edges that come out of new nodes set flow to 0/1/don't define anything
-//this might be what's done already since flow is saved in dd too (although decreased through edge detection) and new nodes are initialised with edge with zero flow
-//TODO or, very advanced, keep the same LP/IP instance alive for the whole algorithm but change variables and constraints and solve again
-
-//TODO what a heuristic for the best conflict to choose? or, the best flow to look for (giving the conflicts)!
-
-//TODO check and maybe throw in all cases where we do unsigned int -1. do that quite often
-
-//TODO turn decision diagram into a class, will mae it easier to use options object
-
-//TODO spped up preprocessing / peeling and removing vertices routine
-
-//TODO every 100th or so iteration compute the integer flow for hopefully and probably better primal heuristic results
 
 #endif //DDCOLORS_DECISIONDIAGRAM_H

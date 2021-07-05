@@ -97,6 +97,7 @@ DecisionDiagram exact_decision_diagram(const Graph &g, const NeighborList &neigh
     dd[0].emplace_back(1, 0, initial_state);
     num_nodes++;
     for(unsigned int layer = 0; layer < g.ncount(); ++layer){
+        dd[layer + 1].reserve(dd[layer].size() + 5);//some estimation for the size of the next layer, reserve some space for the vector
         for(Node &u : dd[layer]){
             if(num_nodes > std::pow(10, 6)){
                 throw std::runtime_error("The exact decision diagram contains more than one million nodes.");
@@ -272,7 +273,7 @@ detect_edge_conflict(DecisionDiagram dd, const NeighborList &neighbors, double f
                 bool use_zero_arc_instead = false;
                 if(not path_found_conflict){
                     for(auto j_it = selected_vertices.rbegin();
-                        j_it != selected_vertices.rend(); j_it++){//TODO what about selected and neighbors?
+                        j_it != selected_vertices.rend(); j_it++){
                         unsigned int j = j_it.operator*();
                         if(neighbors[i].count(j)){
                             conflict_info.emplace_back(
@@ -313,18 +314,6 @@ detect_edge_conflict(DecisionDiagram dd, const NeighborList &neighbors, double f
             conflict_flow.push_back(path_min_flow);
         }
 
-        if(model == IP){
-//            std::cout << "IP and min flow on path was " << path_min_flow << std::endl;
-            if(path_min_flow > 1 + double_eps){
-                throw std::runtime_error(
-                        "Happened that path min flow is larger than 1 in IP case " + std::to_string(path_min_flow));
-            }
-        } else if(path_min_flow > 1 + double_eps){
-            //TODO remove throwing here
-            throw std::runtime_error(
-                    "Happened that path min flow is larger than 1 in IP case " + std::to_string(path_min_flow));
-        }
-
         if(path_min_flow > 0){
             for(int i = 0; i < n; i++){
                 if(label[i]){
@@ -335,7 +324,8 @@ detect_edge_conflict(DecisionDiagram dd, const NeighborList &neighbors, double f
             }
             flow_val -= path_min_flow;
         } else{
-            throw std::runtime_error("Min flow on path was zero despite flow not being zero!");
+            return conflict_info;
+//            throw std::runtime_error("Min flow on path was zero despite flow not being zero!");
         }
     }
 //    std::cout << "found " << conflict_info.size() << " conflicts" << std::endl;
@@ -343,26 +333,21 @@ detect_edge_conflict(DecisionDiagram dd, const NeighborList &neighbors, double f
         return conflict_info;
     }
 
-    if(find_conflicts == LargestFlowConflict){
-        double largest_up_to = std::pow(10, -3);
-        std::vector<int> large_flow_indices;
-        double largest_conflict_flow = *std::max_element(conflict_flow.begin(), conflict_flow.end());
+    if(model == IP){
+        //do not use largest flow conflict in case of IP, flow is integral anyway and therefore >= 1, always large!
+        return conflict_info;
+    }
 
-        auto max_pos = std::find_if(conflict_flow.begin(), conflict_flow.end(),
-                                    [&largest_conflict_flow, &largest_up_to](double flow) {
-                                        return flow >= (largest_conflict_flow - largest_up_to);
-                                    });
-        while(max_pos != conflict_flow.end()){
-            large_flow_indices.push_back(int(max_pos - conflict_flow.begin()));
-            max_pos = std::find_if(std::next(max_pos), conflict_flow.end(),
-                                   [&largest_conflict_flow, &largest_up_to](double flow) {
-                                       return flow >= (largest_conflict_flow - largest_up_to);
-                                   });
-        }
-//        std::cout << "Out of " << conflict_info.size() << " selected " << large_flow_indices.size() << " paths with flow " << largest_conflict_flow << " : " << conflict_flow << " indices " << large_flow_indices << std::endl;
+    if(find_conflicts == LargestFlowConflict){
+        double conflict_minimum_flow = std::pow(10, -4);
         std::vector<PathLabelConflict> result;
-        std::transform(large_flow_indices.begin(), large_flow_indices.end(), std::back_inserter(result),
-                       [&conflict_info](int conflict_index) { return conflict_info[conflict_index]; });
+        for(unsigned int i = 0; i < conflict_flow.size(); i++){
+            if(conflict_flow[i] >= conflict_minimum_flow){
+                result.push_back(conflict_info[i]);
+            }
+        }
+//        if(conflict_info.size() != large_flow_indices.size())
+//            std::cout << "Out of " << conflict_info.size() << " selected " << large_flow_indices.size() << " paths with flow " << largest_conflict_flow << " : " << conflict_flow << " indices " << large_flow_indices << std::endl;
         return result;
     }
     return conflict_info;
@@ -376,7 +361,9 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
     COLORlp_objective_sense(flow_lp, COLORlp_MIN); //minimizing should be the default setting anyway
 
     unsigned int n = num_vars(dd);
-    int ub = (coloring_upper_bound == -1) ? int(n) : coloring_upper_bound - 1; //have flow at most chi(G)-1 on edges
+    int var_bound = (coloring_upper_bound == -1) ? int(n) : coloring_upper_bound - 1;
+    double used_var_bound = (formulation == VarColorBound) ? var_bound : CPX_INFBOUND; //have flow at most chi(G)-1 on edges
+
 
 
     //add variables for all edges in decision diagram but only set obj to 1 for outgoing edges of root
@@ -385,16 +372,15 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
     for(int layer = 0; layer < n; layer++){
         for(Node &u : dd[layer]){
             int obj = layer ? 0 : 1;
-//            var_type = (layer) ? COLORlp_CONTINUOUS: COLORlp_INTEGER;//TODO test
             //First add one_arc variables and then zero_arc variables. keep this ordering in mind!
             if(u.one_arc != -1){ //bound 1-arcs by 1
                 COLORlp_addcol(flow_lp, 0, (int *) nullptr, (double *) nullptr, obj,
-                               0.0, double(ub), var_type, nullptr);
+                               0.0, used_var_bound, var_type, nullptr);
                 edge_index++;
             }
             //another variable for zero arc
             COLORlp_addcol(flow_lp, 0, (int *) nullptr, (double *) nullptr, obj,
-                           0.0, double(ub), var_type, nullptr);
+                           0.0, used_var_bound, (formulation == OneArcsContinuous ? COLORlp_CONTINUOUS : var_type), nullptr);
             edge_index++;
         }
     }
@@ -423,7 +409,6 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
         std::vector<double> vec_val(vec_ind.size(), 1.0); //this is just a vector full of 1.0 the size of vec_ind
         int num_one_arcs = int(vec_ind.size());
 
-        //TODO also consider this in the formulation of the dual and thus for the safe bounds. That just means that the variables z_j are >= 0 instead of unrestricted
 //        COLORlp_addrow(flow_lp, num_one_arcs, vec_ind.data(), vec_val.data(), COLORlp_EQUAL, 1, nullptr);
         COLORlp_addrow(flow_lp, num_one_arcs, vec_ind.data(), vec_val.data(), COLORlp_GREATER_EQUAL, 1, nullptr);
     }
@@ -435,11 +420,11 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
     std::map<NodeIndex, std::vector<EdgeIndex> > old_incoming_arcs;
     Node &root = dd[0][0];
     if(root.one_arc != -1){
-        old_incoming_arcs[dd[1][root.one_arc].index].push_back(edge_index);
+        old_incoming_arcs[root.one_arc].push_back(edge_index);
         edge_index++;
     }
     if(root.zero_arc != -1){
-        old_incoming_arcs[dd[1][root.zero_arc].index].push_back(edge_index);
+        old_incoming_arcs[root.zero_arc].push_back(edge_index);
         edge_index++;
     }
     std::map<NodeIndex, std::vector<EdgeIndex> > new_incoming_arcs;
@@ -455,13 +440,13 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
             }
             //outgoing edges
             if(u.one_arc != -1){
-                new_incoming_arcs[dd[layer + 1][u.one_arc].index].push_back(edge_index);
+                new_incoming_arcs[u.one_arc].push_back(edge_index);
                 vec_ind.push_back(edge_index);
                 vec_val.push_back(-1.0);
                 edge_index++;
             }
             if(u.zero_arc != -1){
-                new_incoming_arcs[dd[layer + 1][u.zero_arc].index].push_back(edge_index);
+                new_incoming_arcs[u.zero_arc].push_back(edge_index);
                 vec_ind.push_back(edge_index);
                 vec_val.push_back(-1.0);
                 edge_index++;
@@ -478,32 +463,30 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
     }
 
 
-    if(formulation == ExtraConstraints or formulation == AllConstraints){
+    if(formulation == ExtraConstraints){
         std::vector<int> index = {0};
         std::vector<double> val = {1.0};
         COLORlp_addrow(flow_lp, 1, index.data(), val.data(), COLORlp_EQUAL, 1, nullptr);//or COLORlp_GREATER_EQUAL
     }
-    if(formulation == BoundConstraints or formulation == AllConstraints){
+    if(formulation == BoundConstraints){
         //input variable bounds as extra constraints
         std::vector<int> index = {0};
         std::vector<double> val = {1.0};
         for(int i = 0; i < num_columns; i++){
-            if(i == 0 and formulation == AllConstraints) continue;
             index = {i};
-            COLORlp_addrow(flow_lp, 1, index.data(), val.data(), COLORlp_LESS_EQUAL, ub, nullptr);
+            COLORlp_addrow(flow_lp, 1, index.data(), val.data(), COLORlp_LESS_EQUAL, used_var_bound, nullptr);
         }
     }
-
-
-    //TODO how does this work
-//    if(model == IP) COLORlp_set_cutoff(flow_lp, double(ub+1));
-
+    if(formulation == ObjectiveValueBound){
+        //add bound on objective value as constraint
+        std::vector<int> index = {0, 1};
+        std::vector<double> val = {1.0, 1.0};
+        COLORlp_addrow(flow_lp, 2, index.data(), val.data(), COLORlp_LESS_EQUAL, var_bound+1, nullptr);
+    }
 
     COLORlp_optimize(flow_lp);
     double flow_val = 0;
     COLORlp_objval(flow_lp, &flow_val);
-//todo hint at code
-//    std::cout << "Done with solving the " << (model==LP ? "LP" : "IP") << ", obj: " << std::setprecision(20) << flow_val << std::endl;
 
     std::vector<double> solution;
     solution.reserve(num_columns);
@@ -511,152 +494,102 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
     solution.assign(solution.data(), solution.data() + num_columns);
 
     double double_safe_bound = 0.0;
-    if(model == LP){
+    if(model == LP){ //Neumaier's method to obtain safe bounds with directed rounding if LP and strict bounds on variables
+        const int originalRounding = fegetround();
 
-        if("Held" and false){
-            std::vector<double> dual_solution;
-            unsigned int dd_size = num_nodes(dd);
-            dual_solution.reserve(n + dd_size - 2 + num_columns);
-            COLORlp_pi(flow_lp, dual_solution.data());
-            dual_solution.assign(dual_solution.data(), dual_solution.data() + n + dd_size - 2);
+        std::vector<double> dual_solution;
+        unsigned int dd_size = num_nodes(dd);
+        // dual solution consists of n variables for the constraints of each layer + the variables for each node except r,t
+        // + possibly dual variables for the bound constraints, if those are used
+        dual_solution.reserve(n + dd_size - 2 + num_columns);
+        COLORlp_pi(flow_lp, dual_solution.data());
+        dual_solution.assign(dual_solution.data(),
+                             dual_solution.data() + n + dd_size - 2);
 
-            double dual_obj = std::accumulate(dual_solution.begin(), dual_solution.begin() + n, double(0.0),
-                                              [](double sum, double var) { return sum + var; });
-            std::cout << "dual obj: " << std::setprecision(20) << dual_obj << "\n" << dual_solution << std::endl;
+        fesetround(FE_DOWNWARD);
+        long double dual_obj = std::accumulate(dual_solution.begin(), dual_solution.begin() + n,
+                                               (long double) (0.0),
+                                               [](long double sum, double var) { return sum + var; });
 
-            const int originalRounding = fegetround();
-            fesetround(FE_TOWARDZERO);
+        fesetround(FE_UPWARD);
 
-            using Ktype = long long;
-            Ktype K = std::min(-(std::numeric_limits<long>::min() + 1), std::numeric_limits<long>::max()) /
-                      (n * num_columns);
-            Ktype K2 = std::pow(2, std::floor(std::log2(K)));
-            std::cout << -(std::numeric_limits<Ktype>::min() + 1) << " and " << std::numeric_limits<Ktype>::max()
-                      << " -> " << K << std::endl;
-            std::vector<Ktype> int_dual_solution(dual_solution.size());
-            std::transform(dual_solution.begin(), dual_solution.end(), int_dual_solution.begin(),
-                           [&K](double var) { return std::floor(K * var); });
-            std::cout << "max of dual solution is " << *std::max_element(dual_solution.begin(), dual_solution.end())
-                      << " with sum " << std::setprecision(200) << dual_solution[0] * K << std::endl;
-            std::cout << int_dual_solution << std::endl;
-            Ktype int_dual_obj = std::accumulate(int_dual_solution.begin(), int_dual_solution.begin() + n, Ktype(0),
-                                                 [](Ktype sum, Ktype var) { return sum + var; });
-            long double scaled_int_dual_obj = int_dual_obj / (long double) K;
-            std::cout << int_dual_obj << " and reduced again: " << std::setprecision(20) << scaled_int_dual_obj
-                      << std::endl;
-            if(int_dual_obj < K * flow_val) std::cout << "test here" << std::endl;
-            else
-                std::cout << "other test here" << std::endl;
-            std::cout << "test alternative: " << std::setprecision(20) << int_dual_obj << " vs " << K * flow_val
-                      << std::endl;
-            if(flow_val < scaled_int_dual_obj)
-                std::cout << std::setprecision(200) << flow_val << "!=" << scaled_int_dual_obj
-                          << " Not matching obj and dual obj values: " << std::abs(flow_val - scaled_int_dual_obj)
-                          << std::endl;
-            if(flow_val < scaled_int_dual_obj)
-                throw std::runtime_error("Not matching obj and scaled int dual obj values: " +
-                                         std::to_string(std::abs(flow_val - scaled_int_dual_obj)));
-            fesetround(originalRounding);
+        //save total index of first node on each level
+        //! shifted by one since root node has no dual variable
+        std::vector<int> shifted_node_indices;
+        shifted_node_indices.push_back(-1); // -1 to shift the indices
+        for(int i = 1; i < int(dd.size()); i++){
+            int next_level_index = shifted_node_indices[i - 1] + int(dd[i - 1].size());
+            shifted_node_indices.push_back(next_level_index);
         }
 
-        if("Neumaier" and true){
-
-            const int originalRounding = fegetround();
-
-            std::vector<double> dual_solution;
-            unsigned int dd_size = num_nodes(dd);
-            // dual solution consists of n variabes for the constraints of each layer + the variables for each node except r,t
-            // + possibly dual variables for the bound constraints, if those are used
-            dual_solution.reserve(n + dd_size - 2 + num_columns);
-            COLORlp_pi(flow_lp, dual_solution.data());
-            dual_solution.assign(dual_solution.data(),
-                                 dual_solution.data() + n + dd_size - 2);//consider bound constraints! //TODO
-
-            fesetround(FE_DOWNWARD);
-            long double dual_obj = std::accumulate(dual_solution.begin(), dual_solution.begin() + n,
-                                                   (long double) (0.0),
-                                                   [](long double sum, double var) { return sum + var; });
-
-            fesetround(FE_UPWARD);
-
-            //save total index of first node on each level
-            //! shifted by one since root node has no dual variable
-            std::vector<int> shifted_node_indices;
-            shifted_node_indices.push_back(-1); // -1 to shift the indices
-            for(int i = 1; i < int(dd.size()); i++){
-                int next_level_index = shifted_node_indices[i - 1] + int(dd[i - 1].size());
-                shifted_node_indices.push_back(next_level_index);
-            }
-
-            std::vector<long double> residual;
-            residual.reserve(num_columns);
-            for(int layer = 0; layer < n; layer++){
-                for(int index = 0; index < int(dd[layer].size()); index++){
-                    Node &u = dd[layer][index];
-                    if(u.one_arc != -1){
-                        long double res_val;
-                        if(layer == 0){
-                            res_val = (long double) 1 * dual_solution[layer] - 1 +
-                                      1 * dual_solution[n + shifted_node_indices[layer + 1] + u.one_arc];
-                        } else if(layer == n - 1){
-                            res_val = (long double) 1 * dual_solution[layer] -
-                                      1 * dual_solution[n + shifted_node_indices[layer] + index] + 0;
-                        } else{
-                            res_val = (long double) 1 * dual_solution[layer] -
-                                      1 * dual_solution[n + shifted_node_indices[layer] + index] +
-                                      1 * dual_solution[n + shifted_node_indices[layer + 1] + u.one_arc];
-                        }
-                        residual.push_back(res_val);
+        std::vector<long double> residual;
+        residual.reserve(num_columns);
+        for(int layer = 0; layer < n; layer++){
+            for(int index = 0; index < int(dd[layer].size()); index++){
+                Node &u = dd[layer][index];
+                if(u.one_arc != -1){
+                    long double res_val;
+                    if(layer == 0){
+                        res_val = (long double) 1 * dual_solution[layer] - 1 +
+                                  1 * dual_solution[n + shifted_node_indices[layer + 1] + u.one_arc];
+                    } else if(layer == n - 1){
+                        res_val = (long double) 1 * dual_solution[layer] -
+                                  1 * dual_solution[n + shifted_node_indices[layer] + index] + 0;
+                    } else{
+                        res_val = (long double) 1 * dual_solution[layer] -
+                                  1 * dual_solution[n + shifted_node_indices[layer] + index] +
+                                  1 * dual_solution[n + shifted_node_indices[layer + 1] + u.one_arc];
                     }
-                    if(u.zero_arc != -1){
-                        long double res_val;
-                        if(layer == 0){
-                            res_val = (long double) 0 * dual_solution[layer] - 1 +
-                                      1 * dual_solution[n + shifted_node_indices[layer + 1] + u.zero_arc];
-                        } else if(layer == n - 1){
-                            res_val = (long double) 0 * dual_solution[layer] -
-                                      1 * dual_solution[n + shifted_node_indices[layer] + index] + 0;
-                        } else{
-                            res_val = (long double) 0 * dual_solution[layer] -
-                                      1 * dual_solution[n + shifted_node_indices[layer] + index] +
-                                      1 * dual_solution[n + shifted_node_indices[layer + 1] + u.zero_arc];
-                        }
-                        residual.push_back(res_val);
+                    residual.push_back(res_val);
+                }
+                if(u.zero_arc != -1){
+                    long double res_val;
+                    if(layer == 0){
+                        res_val = (long double) 0 * dual_solution[layer] - 1 +
+                                  1 * dual_solution[n + shifted_node_indices[layer + 1] + u.zero_arc];
+                    } else if(layer == n - 1){
+                        res_val = (long double) 0 * dual_solution[layer] -
+                                  1 * dual_solution[n + shifted_node_indices[layer] + index] + 0;
+                    } else{
+                        res_val = (long double) 0 * dual_solution[layer] -
+                                  1 * dual_solution[n + shifted_node_indices[layer] + index] +
+                                  1 * dual_solution[n + shifted_node_indices[layer + 1] + u.zero_arc];
                     }
+                    residual.push_back(res_val);
                 }
             }
+        }
 
-            if(num_columns != int(residual.size())){
-                throw std::runtime_error("Not the correct sizes: " + std::to_string(num_columns) + " and " +
-                                         std::to_string(residual.size()));
-            }
+        if(num_columns != int(residual.size())){
+            throw std::runtime_error("Not the correct sizes: " + std::to_string(num_columns) + " and " +
+                                     std::to_string(residual.size()));
+        }
 
-            //compute delta with set upper bounds for primal variables
-            long double delta = 0;
-            for(long double &res_val : residual){
-                delta += ub * std::max(res_val, (long double) (0.0));
-            }
+        //compute delta with set upper bounds for primal variables
+        long double delta = 0;
+        for(long double &res_val : residual){
+            delta += var_bound * std::max(res_val, (long double) (0.0));
+        }
 
-            fesetround(FE_DOWNWARD);
+        fesetround(FE_DOWNWARD);
 
-            long double safe_bound = dual_obj - delta;
-            double_safe_bound = (double) safe_bound;//return this double as the safe lower bound
+        long double safe_bound = dual_obj - delta;
+        double_safe_bound = (double) safe_bound;//return this double as the safe lower bound
 
-            fesetround(originalRounding);
+        fesetround(originalRounding);
 
 //            std::cout << "'safe' lower bound is " << std::setprecision(20) << safe_bound << " with appx. dual bound " << dual_obj << " and delta " << delta  << "\nflow value was " << flow_val << std::endl;
-            if(delta > std::pow(10, -6)){
-                std::cout << "Warning: delta is quite big, larger than 10^-6: " << std::setprecision(25) << delta
-                          << std::endl;
-                throw std::runtime_error("Delta");
-            }
-            if(std::ceil(double_safe_bound) != std::ceil(flow_val - std::pow(10, -5))){
-                std::stringstream message;
-                message << std::setprecision(25) << "ceil of flow_value and double_safe_bound were different: " +
-                                                    std::to_string(flow_val - std::pow(10, -5)) + " and " +
-                                                    std::to_string(double_safe_bound);
-                throw std::runtime_error(message.str());
-            }
+        if(delta > std::pow(10, -6)){
+            std::cout << "Warning: delta is quite big, larger than 10^-6: " << std::setprecision(25) << delta
+                      << std::endl;
+            throw std::runtime_error("Delta");
+        }
+        if(std::ceil(double_safe_bound) != std::ceil(flow_val - std::pow(10, -5))){
+            std::stringstream message;
+            message << std::setprecision(25) << "ceil of flow_value and double_safe_bound were different: " +
+                                                std::to_string(flow_val - std::pow(10, -5)) + " and " +
+                                                std::to_string(double_safe_bound);
+            throw std::runtime_error(message.str());
         }
     }
 
@@ -897,8 +830,7 @@ DecisionDiagram exact_decision_diagram_test(const Graph &g, const NeighborList &
                                                return u.second < w.second;
                                            })->first;
         if(next_var == 0) throw std::runtime_error("Next vertex was 0, this can not happen.");
-        std::cout << "Choose vertex/var " << next_var << " appearing in " << vertex_min_states[next_var] << " states"
-                  << std::endl;
+//        std::cout << "Choose vertex/var " << next_var << " appearing in " << vertex_min_states[next_var] << " states" << std::endl;
         for(Node &u : dd[layer]){
 
             if(num_nodes > std::pow(10, 6)){
@@ -954,5 +886,210 @@ DecisionDiagram exact_decision_diagram_test(const Graph &g, const NeighborList &
               << " arcs and width " << get_width(dd) << "." << std::endl;
     return dd;
 }
+
+double exact_dd_compute_flow_solution(const NeighborList &neighbors, Model model, int coloring_upper_bound, Formulation formulation) {
+
+    COLORlp *flow_lp;//environment is initialised in DDColors
+    COLORlp_init(&flow_lp, "flow_lp");
+    COLORlp_objective_sense(flow_lp, COLORlp_MIN); //minimizing should be the default setting anyway
+
+    unsigned int n = neighbors.size();
+    int var_bound = (coloring_upper_bound == -1) ? int(n) : coloring_upper_bound - 1;
+    double used_var_bound = (formulation == VarColorBound) ? var_bound : CPX_INFBOUND; //have flow at most chi(G)-1 on edges
+    auto var_type = (model == IP) ? COLORlp_INTEGER : COLORlp_CONTINUOUS;
+
+
+    int num_nodes = 0;
+    int edge_index = 0;
+    int max_width = 0;
+
+    StateInfo initial_state;
+    for(unsigned int i = 1; i <= n; ++i){
+        initial_state.insert(initial_state.end(), i);
+    }
+
+    //store single layer and from that create the next one
+    std::vector<Node> Layer;
+    Layer.emplace_back(1, 0, initial_state);
+    num_nodes++;
+    //
+    //map of nodes to edge index
+    std::map<NodeIndex, std::vector<EdgeIndex> > old_incoming_arcs;
+    std::map<NodeIndex, std::vector<EdgeIndex> > new_incoming_arcs;
+
+    std::vector<std::vector<int>> disjoint_constraints_vector;
+    disjoint_constraints_vector.reserve(n);
+    std::vector<std::vector<NodeIndex>> flow_constraints_vector_indices;
+    std::vector<std::vector<double>> flow_constraints_vector_values;
+    for(unsigned int layer = 0; layer < n; ++layer){
+        int obj = layer ? 0 : 1;
+        std::vector<Node> NextLayer;
+        std::vector<int> disjoint_constraints_indices;
+        //don't need to keep a coefficients vector, it's all 1's
+
+        for(Node &u : Layer){
+            //create the next layer node by node, outgoing arc by outgoing arc
+            if(num_nodes > std::pow(10, 6)){
+                throw std::runtime_error("The exact decision diagram contains more than one million nodes.");
+            }
+            //needef or constraints (5)
+            int intermediate_edge_index = edge_index;
+
+            if(u.state_info.count(layer + 1)){
+                auto new_state = u.state_info;
+                new_state.erase(layer + 1);
+                for(unsigned int neighbor : neighbors[layer]){
+                    new_state.erase(neighbor);
+                }
+
+                //look if there exists an equivalent node
+                auto one_arc_it = std::find_if(NextLayer.begin(), NextLayer.end(),
+                                               [&new_state](const Node &v) { return v.state_info == new_state; });
+                if(one_arc_it == NextLayer.end()){
+                    NextLayer.emplace_back(layer + 2, int(NextLayer.size()), new_state);
+                    num_nodes++;
+                    u.one_arc = int(NextLayer.size() - 1);
+                } else{
+                    u.one_arc = int(one_arc_it - NextLayer.begin());
+                }
+                //add variable for that edge
+                COLORlp_addcol(flow_lp, 0, (int *) nullptr, (double *) nullptr, obj, 0.0, used_var_bound, var_type, nullptr);
+                //it's a 1-arc so remember edge index to later set the constraint
+                disjoint_constraints_indices.push_back(edge_index);
+                edge_index++;
+
+                new_state = u.state_info;
+                new_state.erase(layer + 1);
+                auto zero_arc_it = std::find_if(NextLayer.begin(), NextLayer.end(),
+                                                [&new_state](const Node &v) { return v.state_info == new_state; });
+                if(zero_arc_it == NextLayer.end()){
+                    NextLayer.emplace_back(layer + 2, int(NextLayer.size()), new_state);
+                    num_nodes++;
+                    u.zero_arc = int(NextLayer.size() - 1);
+                } else{
+                    u.zero_arc = int(zero_arc_it - NextLayer.begin());
+                }
+                //add variable for that edge
+                COLORlp_addcol(flow_lp, 0, (int *) nullptr, (double *) nullptr, obj, 0.0, used_var_bound, var_type, nullptr);
+                edge_index++;
+            } else{
+                auto zero_arc_it = std::find_if(NextLayer.begin(), NextLayer.end(),
+                                                [&u](const Node &v) { return v.state_info == u.state_info; });
+                if(zero_arc_it == NextLayer.end()){
+                    NextLayer.emplace_back(layer + 2, int(NextLayer.size()), u.state_info);
+                    num_nodes++;
+                    u.zero_arc = int(NextLayer.size() - 1);
+                } else{
+                    u.zero_arc = int(zero_arc_it - NextLayer.begin());
+                }
+                //add variable for that edge
+                COLORlp_addcol(flow_lp, 0, (int *) nullptr, (double *) nullptr, obj, 0.0, used_var_bound, var_type, nullptr);
+                edge_index++;
+            }
+
+            //flow constraints (5), get incoming and outgoing arcs
+            //created new nodes in next layer for u and set arc correctly. deal with incoming/outgoing edges for constraint
+            //skip this for first layer/root node
+            if(not layer){
+                Node &root = Layer[0];
+                old_incoming_arcs[root.one_arc].push_back(0);
+                old_incoming_arcs[root.zero_arc].push_back(1);
+                continue;
+            }
+            //variables to set constraint for incoming/outgoing edges
+            std::vector<NodeIndex> flow_constraints_indices;
+            std::vector<double> flow_constraints_values;
+
+            for(EdgeIndex e : old_incoming_arcs[u.index]){
+                flow_constraints_indices.push_back(e);
+                flow_constraints_values.push_back(1.0);
+            }
+            //outgoing edges
+            if(u.one_arc != -1){
+                new_incoming_arcs[u.one_arc].push_back(intermediate_edge_index);
+                flow_constraints_indices.push_back(intermediate_edge_index);
+                flow_constraints_values.push_back(-1.0);
+                intermediate_edge_index++;
+            }
+            if(u.zero_arc != -1){
+                new_incoming_arcs[u.zero_arc].push_back(intermediate_edge_index);
+                flow_constraints_indices.push_back(intermediate_edge_index);
+                flow_constraints_values.push_back(-1.0);
+                intermediate_edge_index++;
+            } else{ //this should never happen since we don't consider the terminal node
+                std::cout << "Error: there is no zero-arc!" << std::endl;
+            }
+            //tracked all incoming/outgoing arcs, insert the constraint
+            flow_constraints_vector_indices.push_back(flow_constraints_indices);
+            flow_constraints_vector_values.push_back(flow_constraints_values);
+        }
+        if(layer){
+            old_incoming_arcs = new_incoming_arcs;
+            new_incoming_arcs.clear();
+        }
+
+        disjoint_constraints_vector.push_back(disjoint_constraints_indices);
+
+        max_width = std::max(max_width, int(NextLayer.size()));
+        Layer = std::move(NextLayer);
+    }
+    //add constraints for disjoint vertex sets, i.e. (4), do so all at once instead of separately
+    for(auto &indices : disjoint_constraints_vector){
+        std::vector<double> values(indices.size(), 1.0); //this is just a vector full of 1.0 the size of vec_ind
+        int num_one_arcs = int(indices.size());
+        COLORlp_addrow(flow_lp, num_one_arcs, indices.data(), values.data(), COLORlp_GREATER_EQUAL, 1, nullptr);
+    }
+//    add constraints (5)
+    for(unsigned int i = 0; i < flow_constraints_vector_indices.size(); i++){
+        auto  indices = flow_constraints_vector_indices[i];
+        auto  values = flow_constraints_vector_values[i];
+        int node_degree = int(indices.size());
+        COLORlp_addrow(flow_lp, node_degree, indices.data(), values.data(), COLORlp_EQUAL, 0, nullptr);
+    }
+    disjoint_constraints_vector.clear();
+    flow_constraints_vector_indices.clear();
+    flow_constraints_vector_values.clear();
+
+    int num_columns = edge_index;
+    std::cout << "Done building the exact decision diagram containing " << num_nodes << " nodes, " << num_columns
+              << " arcs and width " << max_width << "." << std::endl;
+
+
+    if(formulation == ExtraConstraints){
+        std::vector<int> index = {0};
+        std::vector<double> val = {1.0};
+        COLORlp_addrow(flow_lp, 1, index.data(), val.data(), COLORlp_EQUAL, 1, nullptr);//or COLORlp_GREATER_EQUAL
+    }
+    if(formulation == BoundConstraints){
+        //input variable bounds as extra constraints
+        std::vector<int> index = {0};
+        std::vector<double> val = {1.0};
+        for(int i = 0; i < num_columns; i++){
+            index = {i};
+            COLORlp_addrow(flow_lp, 1, index.data(), val.data(), COLORlp_LESS_EQUAL, used_var_bound, nullptr);
+        }
+    }
+    if(formulation == ObjectiveValueBound){
+        //add bound on objective value as constraint
+        std::vector<int> index = {0, 1};
+        std::vector<double> val = {1.0, 1.0};
+        COLORlp_addrow(flow_lp, 2, index.data(), val.data(), COLORlp_LESS_EQUAL, var_bound+1, nullptr);
+    }
+
+    COLORlp_optimize(flow_lp);
+    double flow_val = 0;
+    COLORlp_objval(flow_lp, &flow_val);
+
+
+    COLORlp_free(&flow_lp);
+
+    return flow_val;
+}
+
+
+
+
+
+
 
 
