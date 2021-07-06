@@ -18,7 +18,6 @@
 
 #include "Graph.h"
 #include "DecisionDiagram.h"
-#include "scip_interface.h"//TODO remove
 
 extern "C" {
 #include "color.h"
@@ -59,19 +58,12 @@ struct Statistics{
     void print() const;
 
     static void pretty_time(std::chrono::duration<double> duration);
-//    std::chrono::duration<double> lp_time;//TODO remove
-//    std::chrono::duration<double> ip_time;
-//    std::chrono::duration<double> primal_heuristic;
-//    std::chrono::duration<double> conflict_detection;
-//    std::chrono::duration<double> conflict_separation;
 };
 
 /*
  * Options
  * Purpose: Used as a field in DDColors and employed to set specifics of how the algorithm is executed
  *
- * print_stats : enables or disables the output of statistics at the end of the algorithm
- * print_time : enables or disables the output of the execution time it took at the end of the algorithm
  * algorithm : switches the method to compute the chromatic number (or other things)
  *             HeuristicRefinement default, iterative refinement with relaxed decision diagrams
  *             ExactCompilation builds exact decision diagram and solves IP to get chromatic number
@@ -102,8 +94,6 @@ struct Statistics{
  */
 
 struct Options{
-    bool print_stats = true; //TODO what do with
-    bool print_time = true;
     enum Algorithm {BasicRefinement, HeuristicRefinement, ExactCompilation, HeuristicOnly, ExactFractionalNumber};
     Algorithm algorithm = HeuristicRefinement;
     RedirectArcs redirect_arcs = OriginalArcs;
@@ -207,8 +197,6 @@ private:
 
     //pass dd here as a copy so we keep flow on original dd
     Coloring primal_heuristic(DecisionDiagram dd);
-
-    static Coloring primal_heuristic(DecisionDiagram dd, const NeighborList &neighbors);//TODO remove when not needed for testing anymore
 
     static bool heuristic_try_color_swap(Vertex vertex, const NeighborList &neighbors, Coloring &coloring);
 

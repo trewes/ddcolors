@@ -70,6 +70,7 @@ std::ostream &operator<<(std::ostream &s, std::chrono::duration<double> duration
     duration -= milliseconds;
     s << milliseconds.count() << "ms";
     //stop at milliseconds, we don't need any more precision than that
+    return s;
 }
 
 DDColors::DDColors(const char *filename, Options options) : graph(filename), opt(options), stats(Statistics()) {
@@ -147,12 +148,10 @@ int DDColors::run() {
     if(opt.algorithm == Options::HeuristicOnly){
         std::chrono::steady_clock::time_point end_time = std::chrono::steady_clock::now();
         stats.execution_time = (end_time - stats.start_time);
-        if(opt.print_time){
-            std::cout << "Execution took: ";
-            Statistics::pretty_time(stats.execution_time);
-        }
-        //careful, heuristic bound is computed according to vertex ordering (if not lexicographic)
-        return heuristic_bound; //and prints no stats
+        std::cout << "Execution took: ";
+        Statistics::pretty_time(stats.execution_time);
+        //prints no stats
+        return heuristic_bound;
     }
 
     lower_bound = 0;
@@ -186,13 +185,9 @@ int DDColors::run() {
     std::chrono::steady_clock::time_point end_time = std::chrono::steady_clock::now();
     stats.execution_time = (end_time - stats.start_time);
 
-    if(opt.print_stats){
-        stats.print();                                  //print optional statistics about the execution of the algorithm
-    }
-    if(opt.print_time){
-        std::cout << "Execution took: ";
-        Statistics::pretty_time(stats.execution_time);
-    }
+    stats.print();                                  //print statistics about the execution of the algorithm
+    std::cout << "Execution took: ";
+    Statistics::pretty_time(stats.execution_time);
     return lower_bound;
 }
 
@@ -259,96 +254,6 @@ int DDColors::basic_iterative_refinement() {
 
 
 Coloring DDColors::primal_heuristic(DecisionDiagram dd) {
-    int n = int(dd.size() - 1);
-    Coloring coloring;
-    bool color_used = true;
-    std::set<unsigned int> coloring_selected_vertices;
-
-    std::set<unsigned int> all_vertices;
-    for(int i = 1; i <= n; ++i){
-        all_vertices.insert(all_vertices.end(), i);
-    }
-
-    while(int(coloring_selected_vertices.size()) < n and color_used){
-        ColorClass cclass;
-        color_used = false;
-        Path path;
-        Label label;
-        std::set<int> neighboring_selected_vertices;
-        double path_min_flow = n;
-        path.push_back(0); //index of root node
-
-        for(int i = 0; i < n; i++){
-            int u = path.back();
-            if((dd[i][u].one_arc != -1) and dd[i][u].one_arc_flow >= dd[i][u].zero_arc_flow){
-                path_min_flow = std::min(path_min_flow, dd[i][u].one_arc_flow);
-                path.push_back(dd[i][u].one_arc);
-                label.push_back(oneArc);
-                if((neighboring_selected_vertices.count(i + 1) == 0) and
-                   (coloring_selected_vertices.count(i + 1) == 0)){
-                    cclass.insert(cclass.end(), i + 1);
-                    coloring_selected_vertices.insert(coloring_selected_vertices.end(), i + 1);
-                    neighboring_selected_vertices.insert(neighboring_selected_vertices.end(), i + 1);
-                    neighboring_selected_vertices.insert(neighbors[i].begin(), neighbors[i].end());
-                    color_used = true;
-                }
-            } else{
-                path_min_flow = std::min(path_min_flow, dd[i][u].zero_arc_flow);
-                path.push_back(dd[i][u].zero_arc);
-                label.push_back(zeroArc);
-            }
-        }
-        if(color_used){
-            coloring.push_back(cclass);
-            if(path_min_flow > 0){
-                for(int i = 0; i < n; i++){
-                    if(label[i]){
-                        dd[i][path[i]].one_arc_flow -= path_min_flow;
-                    } else{
-                        dd[i][path[i]].zero_arc_flow -= path_min_flow;
-                    }
-                }
-            }
-        }
-    }
-    if(int(coloring_selected_vertices.size()) < n){
-        std::set<int> not_selected_vertices;
-        std::set_difference(all_vertices.begin(), all_vertices.end(),
-                            coloring_selected_vertices.begin(), coloring_selected_vertices.end(),
-                            std::inserter(not_selected_vertices, not_selected_vertices.begin()));
-        for(auto it = not_selected_vertices.begin(); it != not_selected_vertices.end();
-            it = not_selected_vertices.erase(it)){ //return iterator following iterator that was deleted, acts as ++
-            unsigned int i = *it;
-            bool found_non_conflicting_cc;
-            for(ColorClass &c : coloring){
-                found_non_conflicting_cc = true;
-                for(unsigned int j : c){
-                    if(neighbors[i - 1].count(j)){
-                        found_non_conflicting_cc = false;
-                        break;
-                    }
-                }
-                if(found_non_conflicting_cc){
-                    c.insert(c.end(), i);
-                    coloring_selected_vertices.insert(coloring_selected_vertices.end(), i);
-                    break;
-                }
-            }
-            if(not coloring_selected_vertices.count(i)){
-                //could not assign i to any cc, swap colors around or create new class to then assign it a colors
-                bool recolored = heuristic_try_color_swap(i, neighbors, coloring);
-                if(not recolored){
-                    coloring.push_back({i});
-                }
-                coloring_selected_vertices.insert(coloring_selected_vertices.end(), i);
-            }
-
-        }
-    }
-    return coloring;
-}
-
-Coloring DDColors::primal_heuristic(DecisionDiagram dd, const NeighborList &neighbors) {
     int n = int(dd.size() - 1);
     Coloring coloring;
     bool color_used = true;
@@ -705,7 +610,7 @@ DDColors::find_conflict_and_primal_heuristic(DecisionDiagram &dd, double flow_va
         if(color_used){
             coloring.push_back(cclass);
         }
-        continue_primal_heuristic = (int(coloring_selected_vertices.size()) < n and color_used);
+        continue_primal_heuristic = (coloring_selected_vertices.size() < n and color_used);
 
         if(not(continue_conflict_detection or continue_primal_heuristic)){
             break;
@@ -714,7 +619,7 @@ DDColors::find_conflict_and_primal_heuristic(DecisionDiagram &dd, double flow_va
 
 
     //exception here: first do the primal heuristic stuff and the the code for LargestFlowConflict
-    if(int(coloring_selected_vertices.size()) < n){
+    if(coloring_selected_vertices.size() < n){
         std::set<int> not_selected_vertices;
         std::set_difference(all_vertices.begin(), all_vertices.end(),
                             coloring_selected_vertices.begin(), coloring_selected_vertices.end(),

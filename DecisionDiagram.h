@@ -62,7 +62,7 @@ typedef std::set<Vertex> StateInfo;
 
 struct Node{
     Node();
-    Node(LayerIndex layer, NodeIndex index, StateInfo state_info = {});
+    Node(LayerIndex _layer, NodeIndex _index, StateInfo _state_info = {});
 
     LayerIndex layer = -1;
     NodeIndex index = -1;
@@ -128,7 +128,7 @@ struct PathLabelConflict{
     Label label;
     Conflict conflict;
 
-    PathLabelConflict(Path path, Label label, Conflict conflict);
+    PathLabelConflict(Path _path, Label _label, Conflict _conflict);
 };
 
 
@@ -191,18 +191,6 @@ double compute_flow_solution(DecisionDiagram &dd, Model model = IP, int coloring
 void find_longest_path(const DecisionDiagram &dd, Path &path, Label &label);
 
 PathLabelConflict conflict_on_longest_path(const DecisionDiagram &dd, const NeighborList &neighbors);
-
-
-
-//TODO remove??
-//attempt at implementing the min state compilation ordering,
-// always chooses the vertex appearing in the minimal number of parent states
-// results were not beneficial
-DecisionDiagram exact_decision_diagram_test(const Graph &g, const NeighborList &neighbors);
-
-//attempt at skipping the building step of the dd but not beneficial either, about the same result
-double exact_dd_compute_flow_solution(const NeighborList &neighbors, Model model = IP, int coloring_upper_bound = -1,
-                      Formulation formulation = Normal);
 
 
 #endif //DDCOLORS_DECISIONDIAGRAM_H

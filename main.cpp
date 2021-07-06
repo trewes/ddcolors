@@ -6,24 +6,10 @@
 
 #include <iostream>
 #include <getopt.h>
+#include <unistd.h>
 
 #include "DecisionDiagram.h"
 #include "DDColors.h"
-
-#include <unistd.h>
-
-//#include <cstdio>
-//#include <gurobi_c.h>
-
-//#include "scip_interface.h"
-
-//TODO soft time limit??
-//TODO option pass initial upper bound
-//TODO option to output or write coloring to a file when found
-//TODO could optimize building of exact dd by implementing a better lookup/check for equivalent nodes, now it takes O(W^2)
-
-//parallel -j 1 "ulimit -m 20000000 ulimit -v 20000000 u; ./ddcolors -m e -p -k" :::  ../Graphs/queen8_8.col ../Graphs/DSJC1000.1.col ../Graphs/DSJC250.1.col ../Graphs/DSJC250.5.col ../Graphs/DSJC500.1.col ../Graphs/DSJC500.5.col  ../Graphs/wap01a.col ../Graphs/wap02a.col ../Graphs/wap03a.col ../Graphs/wap04a.col ../Graphs/wap07a.col ../Graphs/wap08a.col >>test.txt
-
 
 /*
  * print_help : prints the usage and parameters of the program
@@ -34,8 +20,6 @@ void print_help(){
     std::cout<<"Usage: ddcolors.exe [options] graph"<<std::endl;
     std::cout<<"Options:"<<std::endl;
     std::cout<<"-h|--help               :Prints this help message."<<std::endl;
-    std::cout<<"-i|--info               :Enables output of information gathered during the algorithm."<<std::endl;
-    std::cout<<"-t|--time               :Enables output of execution time."<<std::endl;
     std::cout<<"-m|--method arg         :Which algorithm is to be run to get the chromatic number: i for iterative refinement (default),"<<std::endl;//b for basic as hidden option
     std::cout<<"                         e for exact compilation, h for heuristic (only an upper bound) and f to compute the fractional chromatic number."<<std::endl;
     std::cout<<"-o|--ordering arg       :Option of which vertex ordering is to be used. d for dsatur ordering (default)."<<std::endl;
@@ -57,7 +41,7 @@ void print_help(){
 
 #define MAX_PNAME_LEN 128
 static const char* color_verion_string = "some version string";
-int program_header(int ac, char **av) {
+void program_header(int ac, char **av) {
     int   rval     = 0;
     time_t starttime;
     char my_hostname[MAX_PNAME_LEN];
@@ -89,516 +73,15 @@ int program_header(int ac, char **av) {
 
 int main(int argc, char *argv[]) {
 
-    //TODO remove
-    if(0){
-        Graph g(4, 3, {1, 3, 3, 4, 4, 2});
-        NeighborList nlist = g.get_neighbor_list();
-        for(const auto &node : nlist){
-            std::cout << node << std::endl;
-        }
-
-        DecisionDiagram dd = exact_decision_diagram(g, nlist);
-        print_decision_diagram(dd, false);
-
-        dd.clear();
-        dd = initial_decision_diagram(g);
-        std::cout << "initial diagram:" << std::endl;
-        print_decision_diagram(dd, false);
-        std::cout << "after separating conflict (1,3):" << std::endl;
-        separate_edge_conflict(dd, nlist, PathLabelConflict({0, 0, 0}, {oneArc, oneArc, oneArc}, std::make_tuple(1, 3)),
-                               OriginalArcs);
-        print_decision_diagram(dd, false);
-        int flow_val = compute_flow_solution(dd, IP);
-        for(auto &plc : detect_edge_conflict(dd, nlist, flow_val, IP, MultipleConflicts, PreferOneArcs)){
-            int j, k;
-            std::tie(j, k) = plc.conflict;
-            std::cout << "found conflict " << j << ", " << k << std::endl;
-            for(int u : plc.path){
-                std::cout << u << " ";
-            }
-            std::cout << std::endl;
-            for(bool u : plc.label){
-                std::cout << u << " ";
-            }
-            std::cout << std::endl;
-            separate_edge_conflict(dd, nlist, plc, OriginalArcs);
-        }
-//        std::cout << "after separating a second time with conflict (3,4):" << std::endl;
-//        separate_edge_conflict(dd, nlist, , OriginalArcs);
-//        print_decision_diagram(dd);
+    if(argc == 1){//no arguments were given
+        print_help();
+        return 0;
     }
-
-    if(0){
-        std::cout << "Hello" << std::endl;
-        Graph g(4, 3, {1, 3, 3, 4, 4, 2});
-        NeighborList nlist = g.get_neighbor_list();
-        DecisionDiagram dd = initial_decision_diagram(g);
-        separate_edge_conflict(dd, nlist, PathLabelConflict({0, 0, 0}, {oneArc, oneArc, oneArc}, std::make_tuple(1, 3)),
-                               OriginalArcs);
-        print_decision_diagram(dd, false);
-        int flow_val = compute_flow_solution(dd, IP);
-
-        std::vector<PathLabelConflict> conflict_info = detect_edge_conflict(dd, nlist, flow_val, IP, MultipleConflicts,
-                                                                            PreferOneArcs);
-        if(conflict_info.empty()){
-            std::cout << "Failed to detect any edge conflict with given decision diagram and flow input." << std::endl;
-        } else{
-            for(const PathLabelConflict &plc : conflict_info){
-                int j, k;
-                std::tie(j, k) = plc.conflict;
-                std::cout << "found conflict " << j << ", " << k << std::endl;
-                for(int u : plc.path){
-                    std::cout << u << " ";
-                }
-                std::cout << std::endl;
-                for(bool u : plc.label){
-                    std::cout << u << " ";
-                }
-                std::cout << std::endl;
-            }
-        }
-        std::cout << "Done with computing the flow" << std::endl;
-    }
-
-    if(0){
-        Graph g(4, 3, {1, 3, 3, 4, 4, 2});
-        NeighborList nlist = g.get_neighbor_list();
-
-        for(const auto &node : nlist){
-            for(int neighbor : node){
-                std::cout << neighbor << " ";
-            }
-            std::cout << std::endl;
-        }
-
-        DecisionDiagram dd = initial_decision_diagram(g);
-
-        print_decision_diagram(dd, false);
-
-        std::cout << "Try to detect edge conflict." << std::endl;
-
-        for(auto &layer : dd){
-            layer[0].one_arc_flow = 1;
-        }
-
-        double flow_value = 1.0;
-        std::vector<PathLabelConflict> conflict_info = detect_edge_conflict(dd, nlist, flow_value, IP,
-                                                                            MultipleConflicts, PreferOneArcs);
-        if(conflict_info.empty()){
-            std::cout << "Failed to detect any edge conflict with given decision diagram and flow input." << std::endl;
-        } else{
-            for(const PathLabelConflict &plc : conflict_info){
-                int j, k;
-                std::tie(j, k) = plc.conflict;
-                std::cout << "found conflict " << j << ", " << k << std::endl;
-                for(int u : plc.path){
-                    std::cout << u << " ";
-                }
-                std::cout << std::endl;
-                for(bool u : plc.label){
-                    std::cout << u << " ";
-                }
-                std::cout << std::endl;
-
-                separate_edge_conflict(dd, nlist, plc, OriginalArcs);
-
-            }
-
-        }
-
-    }
-
-    if(0){
-        Graph g(4, 3, {1, 3, 3, 4, 4, 2});
-        DDColors ddcol(g, {});
-//        int lower_bound = ddcol.basic_iterative_refinement();
-
-//        std::cout << "lower bound is " << lower_bound << std::endl;
-    }
-
-    if(0){
-        std::string filename = "../Graphs/mulsol.i.1.col";
-        DDColors ddcol(filename.c_str(), {});
-        //int lower_bound = ddcol.basic_iterative_refinement();
-//        int lower_bound = ddcol.heuristic_iterative_refinement();
-//        std::cout << "lower bound is " << lower_bound << std::endl;
-    }
-
-    if(0){
-        Graph g("../Graphs/myciel4.col");
-        NeighborList nlist = g.get_neighbor_list();
-        DecisionDiagram dd = exact_decision_diagram(g, nlist);
-        print_decision_diagram(dd, false);
-        int lower_bound = compute_flow_solution(dd);
-
-        std::cout << "lower bound is " << lower_bound << std::endl;
-    }
-
-    if(0){
-        Graph g(4, 3, {1, 3, 3, 4, 4, 2});
-        Graph perm_graph = g.perm_graph({2, 1, 3, 4});
-        for(auto n : perm_graph.get_neighbor_list()){
-            std::cout << n << std::endl;
-        }
-    }
-
-    if(0){
-        Graph g(4, 3, {1, 3, 3, 4, 4, 2});
-        DDColors ddcol(g, {});
-        int lower_bound = ddcol.run();
-
-        std::cout << "lower bound is " << lower_bound << std::endl;
-    }
-
-    if(0){
-        Options opt{};
-        //opt.redirect_arcs = RedirectArcs::MostSimilarNode;
-        //opt.vertex_ordering = Graph::OrderType::Lexicographic;
-        opt.num_longest_path_iterations = 1;
-        std::string filename = "../Graphs/myciel3.col";//"../Graphs/DSJC125.1.col";
-        DDColors ddcol(filename.c_str(), opt);
-        int lower_bound = ddcol.run();
-
-        std::cout << "lower bound is " << lower_bound << std::endl;
-    }
-
-    if(0){
-        Graph g("../Graphs/mulsol.i.1.col");
-        Permutation ordering;
-        Coloring c = g.dsatur(ordering);
-        std::cout << "DSatur upper bound is " << c.size() << std::endl;
-    }
-
-    if(0){
-        Graph g(4, 3, {1, 3, 3, 4, 4, 2});
-//        g = Graph("../Graphs/mulsol.i.1.col");
-        DecisionDiagram dd = initial_decision_diagram(g);
-        separate_edge_conflict(dd, g.get_neighbor_list(),
-                               PathLabelConflict({0, 0, 0}, {oneArc, oneArc, oneArc}, std::make_tuple(1, 3)));
-        PathLabelConflict plc = conflict_on_longest_path(dd, g.get_neighbor_list());
-        separate_edge_conflict(dd, g.get_neighbor_list(), plc);
-        plc = conflict_on_longest_path(dd, g.get_neighbor_list());
-        separate_edge_conflict(dd, g.get_neighbor_list(), plc);
-        plc = conflict_on_longest_path(dd, g.get_neighbor_list());
-        separate_edge_conflict(dd, g.get_neighbor_list(), plc);
-        plc = conflict_on_longest_path(dd, g.get_neighbor_list());
-
-    }
-
-    if(0){
-        Graph g(4, 3, {1, 3, 3, 4, 4, 2});
-        Options opt;
-        opt.num_longest_path_iterations = 0;
-        opt.vertex_ordering = Graph::Lexicographic;
-        opt.find_conflicts = SingleConflict;
-        opt.algorithm = Options::BasicRefinement;
-        opt.relaxation = Options::LP_First;
-//        opt.algorithm = Options::ExactCompilation;
-        DDColors ddcolors("../Graphs/myciel4.col", opt);
-//        DDColors ddcolors(g, opt);
-        std::cout << "chromatic number is: " << ddcolors.run() << std::endl;
-    }
-
-    if(0){
-        std::vector<int> edge_list;
-        int cycle_length = 7;
-        for(int i = 1; i < cycle_length; i++){
-            edge_list.push_back(i);
-            edge_list.push_back(i + 1);
-        }
-        edge_list.push_back(cycle_length);
-        edge_list.push_back(1);
-//        Graph g(7, 7, {1, 3, 3, 5, 5, 7, 7, 2, 2, 4, 4, 6, 6, 1});
-//        Graph g(cycle_length, cycle_length, edge_list);
-        Graph g("../Graphs/myciel4.col");
-        Options opt;
-        opt.algorithm = Options::ExactCompilation;
-//        opt.vertex_ordering = Graph::Max_Conneceted_degree;
-        opt.num_longest_path_iterations = 0;
-//        opt.relaxation = IP_Only;
-//        opt.find_conflicts = LargestFlowConflict;
-
-        DDColors(g, opt).run();
-    }
-
-    if(0){ //testing integrality gap for all small graphs
-        Options opt;
-        opt.algorithm = Options::ExactCompilation;
-        opt.vertex_ordering = Graph::Lexicographic;
-        opt.print_stats = false;
-        opt.print_time = false;
-
-        std::ifstream file("../Graphs/graph6/graph9c.g6");
-        if(not file){
-            throw std::runtime_error("Cannot open file.");
-        }
-
-        std::string line;
-        std::getline(file, line);//read in the file line by line
-        int graph_count = 0;
-        do{
-            graph_count++;
-            std::cout << "graph " << graph_count << std::endl;
-            Graph g(line);
-            DDColors(g, opt).run();
-        } while(std::getline(file, line));
-    }
-
-    if(0){
-//        Graph g(4, 3, {1, 3, 3, 4, 4, 2});
-
-        Graph g("../Graphs/myciel4.col");
-        Options opt;
-//        opt.algorithm = Options::ExactCompilation;
-        opt.vertex_ordering = Graph::Lexicographic;
-        opt.num_longest_path_iterations = 0;
-
-        DDColors(g, opt).run();
-    }
-
-    if(0){
-        Graph g(4, 3, {1, 3, 3, 4, 4, 2});
-//        Graph g("../Graphs/inithx.i.3.col");
-        Options opt;
-        opt.vertex_ordering = Graph::Lexicographic;
-        opt.num_longest_path_iterations = 0;
-//        opt.algorithm = Options::ExactCompilation;
-//        opt.relaxation = IP_Only;
-//        opt.find_conflicts = LargestFlowConflict;
-//        opt.dsatur_only = true;
-
-        std::cout << DDColors(g, opt).run() << std::endl;
-    }
-
-    if(0){
-        SCIP_RETCODE retcode;
-
-        retcode = runCircle();
-
-        /* evaluate return code of the SCIP process */
-        if(retcode != SCIP_OKAY){
-            /* write error back trace */
-            SCIPprintError(retcode);
-            return -1;
-        }
-    }
-
-    if(0){
-        test();
-    }
-
-    if(0){
-//        Graph g(4, 3, {1, 3, 3, 4, 4, 2});
-        Graph g("../Graphs/mulsol.i.1.col");
-        Permutation perm;
-        int bound = g.max_connected_degree_coloring(perm).size();
-        g = g.perm_graph(perm);
-        DecisionDiagram dd = exact_decision_diagram(g);
-//        compute_flow_solution(dd, IP, -1);
-        compute_flow_solution_SCIP(dd, IP, -1);
-        validate_flow_solution_SCIPexact(dd, 0, IP, -1);
-    }
-
-    if(0){
-        std::vector<Vertex> edge_list;
-        int length = 7;
-        for(int i = 1; i <= 3; i++){
-            for(int j = i + 1; j <= length; j++){
-                edge_list.push_back(i);
-                edge_list.push_back(j);
-            }
-        }
-
-        for(int i = 5; i <= length; i++){
-            edge_list.push_back(i);
-            edge_list.push_back(i + 1);
-        }
-
-        Graph g(length + 1, edge_list.size() / 2, edge_list);
-        g.print();
-        g.remove_dominated_vertices();
-        g.print();
-        g.remove_dominated_vertices();
-        g.print();
-
-
-
-//        h = g.peel_graph_ordered(4);
-//        h.print();
-//        h = h.peel_graph_ordered(5);
-//        h.print();
-
-    }
-
-    if(0){
-        Graph g("../Graphs/inithx.i.3.col");
-        std::cout << "original: " << g.ncount() << ", " << g.ecount() << std::endl;
-        int bound = 30;
-        Options opt;
-//        opt.algorithm = Options::ExactCompilation;
-//        opt.vertex_ordering = Graph::Lexicographic;
-        opt.num_longest_path_iterations = 0;
-
-//        DDColors(g, opt).preprocessing_graph();
-
-//        DDColors(g, opt).run();
-        g.peel_graph(bound);
-        g.peel_graph(bound);
-        g.peel_graph(bound);
-//        DDColors(g, opt).run();
-        g.peel_graph(bound);
-//        DDColors(g, opt).run();
-        g.peel_graph(bound);
-        DDColors(g, opt).run();
-
-    }
-
-    if(0){
-        Graph g("../Graphs/3-Insertions_5.col");
-
-        std::cout << "original: " << g.ncount() << ", " << g.ecount() << std::endl;
-        int bound = 4;
-
-        unsigned int num_nodes_previous_iteration = 0;
-        while(true){
-            num_nodes_previous_iteration = g.ncount();
-            g.remove_dominated_vertices();
-            g.peel_graph(bound);
-            if(num_nodes_previous_iteration == g.ncount())
-                break;
-        }
-
-        Options opt;
-//        opt.algorithm = Options::ExactCompilation;
-//        DDColors(g, opt).run();
-    }
-
-    if(0){
-        char const *filename = (0) ? "../Graphs/queen9_9.col" : argv[1];
-//        Graph g("../Graphs/zeroin.i.3.col");
-        Graph g(filename);
-
-        Options opt;
-        opt.algorithm = Options::HeuristicOnly;
-
-        std::cout << "Heuristic found coloring of size " << DDColors(g, opt).run() << std::endl;
-    }
-
-    if(0){
-        char const *filename = (1) ? "../Graphs/queen9_9.col" : argv[1];
-//        Graph g("../Graphs/zeroin.i.3.col");
-        Graph g(filename);
-
-        Permutation perm;
-        Coloring c;
-
-        c = g.dsatur(perm);
-        g = g.perm_graph(perm_inverse(perm));
-        DecisionDiagram dd = exact_decision_diagram(g);
-        std::cout << num_nodes(dd) << " nodes, " << num_arcs(dd) << " arcs, " << get_width(dd) << " width. dsatur "
-                  << c.size() << std::endl;
-
-        c = g.dsatur_original(perm);
-        g = g.perm_graph(perm_inverse(perm));
-        dd = exact_decision_diagram(g);
-        std::cout << num_nodes(dd) << " nodes, " << num_arcs(dd) << " arcs, " << get_width(dd)
-                  << " width. dsatur_original " << c.size() << std::endl;
-
-        c = g.max_connected_degree_coloring(perm);
-        g = g.perm_graph(perm_inverse(perm));
-        dd = exact_decision_diagram(g);
-        std::cout << num_nodes(dd) << " nodes, " << num_arcs(dd) << " arcs, " << get_width(dd)
-                  << " width. max_connected_degree_coloring " << c.size() << std::endl;
-
-        g = Graph(filename);
-        dd = exact_decision_diagram(g);
-        std::cout << num_nodes(dd) << " nodes, " << num_arcs(dd) << " arcs, " << get_width(dd)
-                  << " width. lexicographic" << std::endl;
-    }
-
-    if(0){
-        char const *filename = (0) ? "../Graphs/queen9_9.col" : argv[2];
-        Graph g(filename);
-        int hint = std::atoi(argv[1]);
-        std::cout << hint << std::endl;
-
-        DDColors ddc(g);
-//        ddc.preprocessing_graph();
-    }
-
-    if(0){
-        char const *filename = (0) ? "../Graphs/queen9_9.col" : argv[1];
-        Graph g(filename);
-        NeighborList neighbors = g.get_neighbor_list();
-        DecisionDiagram dd = exact_decision_diagram(g);
-        double ip_flow = compute_flow_solution(dd, IP, Normal);
-//        int colorsize = int(DDColors::primal_heuristic(dd, neighbors).size());
-
-//        std::cout << "flow bound " << ip_flow << " vs color bound " << colorsize << std::endl;
-
-
-    }
-
-    if(0){
-        char const *filename = (0) ? "../Graphs/r250.1c.col" : argv[1];
-        Graph g(filename);
-//        int width = g.constraint_graph_width();
-//        std::cout << "width is " << width << std::endl;
-
-        Permutation o;
-        g.max_connected_degree_coloring(o);
-        g = g.perm_graph(perm_inverse(o));
-        DecisionDiagram dd = exact_decision_diagram(g);
-        dd = exact_decision_diagram_test(g, g.get_neighbor_list());
-
-//compare the two orderings, namely the constraint graph ordering with some other
-//        o = g.constraint_graph_ordering();
-//        g = g.perm_graph(perm_inverse(o));
-//        dd = exact_decision_diagram(g);
-
-
-
-    }
-
-    if(0){//test for function remove_vertices_together
-        bool test = false;
-        char const *filename = (test) ? "../Graphs/r250.1c.col" : argv[1];
-        Graph g(filename);
-        Graph h = g;
-        std::cout << "Equal: " << (h.get_neighbor_list() == g.get_neighbor_list()) << std::endl;
-        NeighborList neighbors = g.get_neighbor_list();
-        int peeling_degree = (test) ? 20 : std::atoi(argv[2]);
-        std::set<Vertex> small_degree_vertices;
-        for(Vertex i = 1; i <= g.ncount(); i++){
-            if(neighbors[i - 1].size() < peeling_degree){
-                small_degree_vertices.insert(small_degree_vertices.end(), i);
-            }
-        }
-        g.remove_vertices(small_degree_vertices);
-        h.remove_vertices_together(small_degree_vertices);
-        std::cout << "Equal: " << (h.get_neighbor_list() == g.get_neighbor_list()) << std::endl;
-        std::cout << "ncount: " << h.ncount() << " vs " << g.ncount() << std::endl;
-    }
-
-    if(0){
-        Graph g(4, 3, {1, 3, 3, 4, 4, 2});
-        Options options;
-        options.algorithm = Options::ExactCompilation;
-        options.vertex_ordering = Graph::Lexicographic;
-        DDColors ddrun(g, options);
-        ddrun.run();
-
-    }
-
-
-//return 0;
 
     int opt;
     int option_index = 0;
     static struct option long_options[] = {
             {"help",            no_argument,       nullptr, 'h'},
-            {"info",            no_argument,       nullptr, 'i'},
-            {"time",            no_argument,       nullptr, 't'},
             {"arc_redirection", no_argument,       nullptr, 'a'},
             {"preprocessing",   optional_argument, nullptr, 'p'},
             {"method",          required_argument, nullptr, 'm'},
@@ -613,7 +96,7 @@ int main(int argc, char *argv[]) {
             {"randomness",      no_argument,       nullptr, 'z'},
     };
     Options dd_settings{};
-    while((opt = getopt_long(argc, argv, "hitap::k::zc:o:r:l:m:d:f:", long_options, &option_index)) != -1){
+    while((opt = getopt_long(argc, argv, "hap::k::zc:o:r:l:m:d:f:", long_options, &option_index)) != -1){
         switch(opt){
 
             default:
@@ -623,12 +106,6 @@ int main(int argc, char *argv[]) {
                 print_help();
                 return -1;
 
-            case 'i':
-                dd_settings.print_stats = true;
-                break;
-            case 't':
-                dd_settings.print_time = true;
-                break;
             case 'm':
                 if(*optarg == 'b'){
                     dd_settings.algorithm = Options::BasicRefinement;
@@ -762,7 +239,11 @@ int main(int argc, char *argv[]) {
     }
 
     //optind is the index in argv after going through all the options, now the arguments are given
-    char const *filename = (argc > 1) ? argv[optind] : "../Graphs/r250.1c.col";
+    if(optind >= argc){
+        std::cout << "No input file was given." << std::endl;
+        return 0;
+    }
+    char const *filename = argv[optind];
 
     try{
         program_header(argc, argv);

@@ -1,23 +1,10 @@
-
-
-
-SET(USE_SOLVER "CPLEX") # "QSOPT" "GUROBI", "CPLEX"
-
-
-SET(QSOPT_HOME_EXPORT QSOPT_HOME=/opt/qsopt/)
-#SET(QSOPT_HOME_EXPORT QSOPT_HOME=C:/Users/Timo/Documents/Uni/BA/Code/qsopt)
-
-SET(GUROBI_HOME_EXPORT GUROBI_HOME=/opt/gurobi901/linux64)
-
-SET(CPLEX_HOME_EXPORT CPLEX_HOME=/opt/cplex/CPLEX_Studio126/cplex/)
-
 ######################################################################
 CMAKE_MINIMUM_REQUIRED(VERSION 3.0.0)
 PROJECT(ddcolors)
 
 SET(CMAKE_CXX_STANDARD 20)
 
-SET(SOURCE_FILES main.cpp Graph.cpp Graph.h DecisionDiagram.cpp DecisionDiagram.h DDColors.cpp DDColors.h)# scip_interface.cpp scip_interface.h)
+SET(SOURCE_FILES main.cpp Graph.cpp Graph.h DecisionDiagram.cpp DecisionDiagram.h DDColors.cpp DDColors.h)
 
 
 ####################
@@ -29,26 +16,18 @@ SET(CMAKE_SYSTEM_PROCESSOR arm)
 ADD_EXECUTABLE(${PROJECT_NAME} ${SOURCE_FILES})
 
 
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O3")#-O3 oder -gp
-#SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pedantic -Wall -Wshadow -W  -Wmissing-declarations -Wpointer-arith -Wundef -Wcast-qual -Wcast-align -Wwrite-strings")
-
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O3")
 
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 
 
-#SET(EXACTCOLORS_ROOT_DIR /cygdrive/c/Users/Timo/Documents/Uni/BA/clone_exactcolors/exactcolors)
+SET(EXACTCOLORS_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../exactcolors)
 FIND_PACKAGE(EXACTCOLORS)
 IF(EXACTCOLORS_FOUND)
     TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PRIVATE ${EXACTCOLORS_INCLUDE_DIRS})
     TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${EXACTCOLORS_LIBRARIES})
 ELSE()
     MESSAGE(STATUS "No precompiled version of exactcolors found, cloning and building from github")
-    IF(USE_SOLVER STREQUAL "QSOPT")
-        SET(SOLVER_EXPORT ${QSOPT_HOME_EXPORT})
-    ENDIF()
-    IF(USE_SOLVER STREQUAL "GUROBI")
-        SET(SOLVER_EXPORT ${GUROBI_HOME_EXPORT})
-    ENDIF()
     IF(USE_SOLVER STREQUAL "CPLEX")
         SET(SOLVER_EXPORT ${CPLEX_HOME_EXPORT})
     ENDIF()
@@ -61,7 +40,7 @@ ELSE()
                         PATCH_COMMAND cmake -E echo "Skipping patch step."
                         UPDATE_COMMAND cmake -E echo "Skipping update step."
                         CONFIGURE_COMMAND cmake -E echo "Skipping configure step."
-                        BUILD_COMMAND make clean && export ${SOLVER_EXPORT} && cmake -E echo "HI" && make "libexactcolor.a" && cd mwis_sewell && make "libsewell.a"
+                        BUILD_COMMAND make clean && export ${SOLVER_EXPORT} && make "libexactcolor.a" && cd mwis_sewell && make "libsewell.a"
                         BUILD_IN_SOURCE 1
                         #            EXCLUDE_FROM_ALL TRUE
                         INSTALL_COMMAND cmake -E echo "Skipping install step."
@@ -75,64 +54,14 @@ ELSE()
 ENDIF()
 
 
-#INCLUDE(CHECKSYMBOLEXISTS)
-#CHECK_SYMBOL_EXISTS(COLORlp_init_env ${EXACTCOLORS_LIBRARIES} FOUND_FUNCTION)
-#MESSAGE(STATUS ${FOUND_FUNCTION})
-
-
-IF(USE_SOLVER STREQUAL "QSOPT")
-    SET(QSOPT_ROOT_DIR /opt/qsopt)
-#    SET(QSOPT_ROOT_DIR C:/Users/Timo/Documents/Uni/BA/Code/qsopt)
-    FIND_PACKAGE(QSOPT REQUIRED)
-    TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PRIVATE ${QSOPT_INCLUDE_DIR})
-    TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${QSOPT_LIBRARY})
-    MESSAGE(STATUS "Warning: QSOPT is only an LP solver and will treat the variables of the IP as continuous.")
-    MESSAGE(STATUS "Warning: QSOPT This can find the chromatic number too but is not guaranteed to do so!")
-ENDIF()
-
-IF(USE_SOLVER STREQUAL "GUROBI")
-    SET(GUROBI_ROOT_DIR /opt/gurobi901/linux64)
-    FIND_PACKAGE(GUROBI REQUIRED)
-    TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PRIVATE ${GUROBI_INCLUDE_DIR})
-    TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${GUROBI_LIBRARIES})
-ENDIF()
+SET(USE_SOLVER "CPLEX")
 
 IF(USE_SOLVER STREQUAL "CPLEX")
-    SET(CPLEX_ROOT_DIR /opt/cplex/CPLEX_Studio126)
     FIND_PACKAGE(CPLEX REQUIRED)
     TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PRIVATE ${CPLEX_INCLUDE_DIRS})
     TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${CPLEX_LIBRARIES})
 ENDIF()
-#message make sure you also compiled exactcolors with the right solver
-
-IF(TRUE)
-#    SET(SCIP_ROOT_DIR /home/brand/local_opt/scip-6.0.2/installdir/)
-    SET(SCIP_ROOT_DIR /home/brand/local_opt/scipopt-exact-0.1/scip/install/)
-#    SET(SCIP_ROOT_DIR /home/brand/local_opt/scipoptsuite-7.0.1.3/install/)
-    FIND_PACKAGE(SCIP REQUIRED)
-    TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PUBLIC ${SCIP_INCLUDE_DIRS})
-    TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${SCIP_LIBRARIES})
-    TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${SCIP_LIBRARIES})
-
-    SET(SOME_ROOT_DIR ${SCIP_ROOT_DIR}/../..)
-    TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PUBLIC ${SOME_ROOT_DIR}/zimpl/install/include)
-#    TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PUBLIC ${SOME_ROOT_DIR}/papilo/install/include)
-#    TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PUBLIC ${SOME_ROOT_DIR}/soplex/install/include)
-#    TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PUBLIC ${SOME_ROOT_DIR}/scip/install/include)
-#    TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${SOME_ROOT_DIR}/papilo/install/lib/libclusol.a)
-#    TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${SOME_ROOT_DIR}/soplex/install/lib/libsoplex.a)
-#    TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${SOME_ROOT_DIR}/scip/install/lib/libscip.so)
-#    TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${SOME_ROOT_DIR}/scip/install/lib/libscip.so.7.0)
-
-ENDIF()
 
 
-#export ILOG_LICENSE_FILE=/opt/ILOG/CPLEX_Studio_AcademicResearch122/licenses/access.ilm
-#export CPLEX_HOME=/opt/cplex/CPLEX_Studio126/cplex/
-
-#unset CPLEX_HOME
-#export GUROBI_HOME=/opt/gurobi901/linux64
-
-#export QSOPT_HOME=/opt/qsopt/
-
+UNSET(CPLEX_ROOT_DIR CACHE)
 

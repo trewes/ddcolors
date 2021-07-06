@@ -78,7 +78,7 @@ public:
      *
      */
 
-    Graph(unsigned int ncount, unsigned int ecount, std::vector<Vertex> elist);
+    Graph(unsigned int vertex_count, unsigned int edge_count, std::vector<Vertex> edge_list);
     Graph(const char *filename);
     Graph(std::string g6_string);
 
@@ -181,6 +181,7 @@ public:
 
     void remove_vertex(Vertex remove);
     void remove_vertices(const std::set<Vertex> &to_remove);
+    static int num_larger(Vertex v, const std::set<Vertex>& set);//just a tiny helper function to remove vertices all at once
     void remove_vertices_together(const std::set<Vertex> &to_remove);
 
     void peel_graph(int peeling_degree);
@@ -190,20 +191,6 @@ public:
     void remove_dominated_vertices(const NeighborList &neighbors);
 
     std::set<Vertex> find_clique(int nrbranches = -1) const;
-
-
-
-
-    //only applicable for deciding k-colorability for given k = size of some clique
-    //can not help at all if the chromatic number is greater than the largest clique
-    //TODO remove for hand-in
-    void vertex_fusion(const std::set<Vertex> &clique);
-
-    void vertex_fusion(const std::set<Vertex> &clique, const NeighborList &neighbors);
-
-    void edge_addition(const std::set<Vertex> &clique);
-
-    void edge_addition(const std::set<Vertex> &clique, const NeighborList &neighbors);
 
 };
 

@@ -60,8 +60,8 @@ NeighborList Graph::get_neighbor_list() const {
     return list;
 }
 
-Graph::Graph(unsigned int ncount, unsigned int ecount, std::vector<Vertex> elist) :
-        _ncount(ncount), _ecount(ecount), _elist(std::move(elist)) {}
+Graph::Graph(unsigned int vertex_count, unsigned int edge_count, std::vector<Vertex> edge_list) :
+        _ncount(vertex_count), _ecount(edge_count), _elist(std::move(edge_list)) {}
 
 unsigned int Graph::ncount() const {
     return _ncount;
@@ -84,13 +84,13 @@ std::vector<Vertex> Graph::elist() const {
 }
 
 std::vector<int> Graph::shifted_elist() const {
-    std::vector<int> shifted_elist(2 * _ecount);
-    std::transform(_elist.begin(), _elist.end(), shifted_elist.begin(),
+    std::vector<int> shifted_edge_list(2 * _ecount);
+    std::transform(_elist.begin(), _elist.end(), shifted_edge_list.begin(),
                    [](Vertex v) {
                        if(v == 0) throw std::runtime_error("Vertex is 0, cannot shift it.");
                        return (int) (v - 1);
                    });
-    return shifted_elist;
+    return shifted_edge_list;
 }
 
 
@@ -248,12 +248,12 @@ Graph Graph::perm_graph(const Permutation &perm) const {
     if(perm.size() != _ncount){
         throw std::runtime_error("Size of graph and permutation do not match.");
     }
-    Graph perm_graph(_ncount, _ecount, {});
-    perm_graph._elist.resize(2 * _ecount);
+    Graph permuted_graph(_ncount, _ecount, {});
+    permuted_graph._elist.resize(2 * _ecount);
     for(size_t i = 0; i < 2 * _ecount; i++){
-        perm_graph._elist[i] = perm[_elist[i] - 1];
+        permuted_graph._elist[i] = perm[_elist[i] - 1];
     }
-    return perm_graph;
+    return permuted_graph;
 }
 
 Coloring Graph::dsatur(Permutation &ordering, const std::set<Vertex> &clique) const {
@@ -270,7 +270,7 @@ Coloring Graph::dsatur(Permutation &ordering, const NeighborList &neighbors, con
     //record for an uncolored vertex to how many colored vertices it is connected to
     std::vector<int> saturation_level(_ncount, 0);
     std::set<Vertex> unselected_vertices;
-    for(size_t vertex = 1; vertex <= int(_ncount); vertex++){
+    for(size_t vertex = 1; vertex <= _ncount; vertex++){
         unselected_vertices.insert(unselected_vertices.begin(), vertex);
     }
 
@@ -439,7 +439,7 @@ Graph::dsatur_original(Permutation &ordering, const NeighborList &neighbors, con
     for(Vertex v = 1; v <= _ncount; v++)
         uncolored_subgraph_degree[v - 1] = int(neighbors[v - 1].size());
     std::set<Vertex> unselected_vertices;
-    for(size_t vertex = 1; vertex <= int(_ncount); vertex++){
+    for(size_t vertex = 1; vertex <= _ncount; vertex++){
         unselected_vertices.insert(unselected_vertices.begin(), vertex);
     }
 
@@ -614,7 +614,7 @@ Coloring Graph::max_connected_degree_coloring(Permutation &ordering, const Neigh
     //record for an uncolored vertex to how many colored vertices it is connected
     std::vector<int> num_selected_neighbors(_ncount, 0);
     std::set<Vertex> unselected_vertices;
-    for(size_t vertex = 1; vertex <= int(_ncount); vertex++){
+    for(size_t vertex = 1; vertex <= _ncount; vertex++){
         unselected_vertices.insert(unselected_vertices.begin(), vertex);
     }
 
@@ -766,7 +766,7 @@ Permutation Graph::max_connected_degree_ordering(const NeighborList &neighbors, 
     //record for an unselected vertex to how many selected vertices it is connected
     std::vector<int> num_connected(_ncount);
     std::set<Vertex> unselected_vertices;
-    for(size_t vertex = 1; vertex <= int(_ncount); vertex++){
+    for(size_t vertex = 1; vertex <= _ncount; vertex++){
         unselected_vertices.insert(unselected_vertices.begin(), vertex);
     }
 
@@ -948,7 +948,7 @@ void Graph::peel_graph(int peeling_degree) {
 void Graph::peel_graph(int peeling_degree, const NeighborList &neighbors) {
     std::set<Vertex> small_degree_vertices;
     for(Vertex i = 1; i <= _ncount; i++){
-        if(neighbors[i - 1].size() < peeling_degree){
+        if(int(neighbors[i - 1].size()) < peeling_degree){
             small_degree_vertices.insert(small_degree_vertices.end(), i);
         }
     }
@@ -977,8 +977,8 @@ void Graph::remove_vertices(const std::set<Vertex> &to_remove) {
     }
 }
 
-
-int num_larger(Vertex v, const std::set<Vertex>& set){
+//just a tiny helper function to remove vertices all at once
+int Graph::num_larger(Vertex v, const std::set<Vertex>& set){
     if(set.empty())
         return 0;
     auto num = std::count_if(set.begin(), set.end(), [&v](Vertex set_vertex){return v > set_vertex;});
@@ -1047,75 +1047,6 @@ std::set<Vertex> Graph::find_clique(int nrbranches) const {
                    [](int v) { return (Vertex) v + 1; });
     return clique;
 }
-
-
-
-
-
-
-void Graph::vertex_fusion(const std::set<Vertex> &clique) {
-    NeighborList neighbors = get_neighbor_list();
-    vertex_fusion(clique, neighbors);
-}
-
-
-void Graph::vertex_fusion(const std::set<Vertex> &clique, const NeighborList &neighbors) {
-    for(Vertex v = 1; v <= _ncount; v++){
-        if(clique.count(v))
-            continue;
-        for(Vertex w : clique){
-            if(neighbors[v - 1].count(w))
-                continue;
-
-            bool adjacent_to_all = true;
-            for(Vertex u : clique){
-                if(w == u)
-                    continue;
-            }
-        }
-    }
-}
-
-void Graph::edge_addition(const std::set<Vertex> &clique) {
-    NeighborList neighbors = get_neighbor_list();
-    edge_addition(clique, neighbors);
-}
-
-void Graph::edge_addition(const std::set<Vertex> &clique, const NeighborList &neighbors) {
-    for(Vertex v = 1; v <= _ncount; v++){
-        if(clique.count(v))
-            continue;
-        for(Vertex w = v + 1; w <= _ncount; w++){
-            if(clique.count(w) or neighbors[v - 1].count(w))
-                continue;
-
-            bool edge_always_exists = true;
-            for(Vertex u : clique){
-                if(v == u or w == u)
-                    continue;
-
-                if((not neighbors[v - 1].count(u)) and (not neighbors[w - 1].count(u))){
-                    edge_always_exists = false;
-                    break;
-                }
-            }
-            if(edge_always_exists){
-                //add edge {v,w}
-                _elist.push_back(v);
-                _elist.push_back(w);
-                _ecount++;
-            }
-        }
-    }
-    std::cout << "edge addition : " << ncount() << ", " << ecount() << std::endl;
-}
-
-
-
-
-
-
-
 
 
 
