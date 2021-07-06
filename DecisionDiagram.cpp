@@ -74,85 +74,6 @@ void print_decision_diagram(const DecisionDiagram &dd, bool use_tag) {
     }
 }
 
-PathLabelConflict::PathLabelConflict(Path path, Label label, Conflict conflict)
-        : path(std::move(path)), label(std::move(label)), conflict(std::move(conflict)) {}
-
-
-DecisionDiagram exact_decision_diagram(const Graph &g) {
-    NeighborList neighbors = g.get_neighbor_list();
-    return exact_decision_diagram(g, neighbors);
-}
-
-DecisionDiagram exact_decision_diagram(const Graph &g, const NeighborList &neighbors) {
-    DecisionDiagram dd;
-    dd.resize(g.ncount() + 1);
-    int num_nodes = 0;
-    int num_arcs = 0;
-
-    StateInfo initial_state;
-    for(unsigned int i = 1; i <= g.ncount(); ++i){
-        initial_state.insert(initial_state.end(), i);
-    }
-
-    dd[0].emplace_back(1, 0, initial_state);
-    num_nodes++;
-    for(unsigned int layer = 0; layer < g.ncount(); ++layer){
-        dd[layer + 1].reserve(dd[layer].size() + 5);//some estimation for the size of the next layer, reserve some space for the vector
-        for(Node &u : dd[layer]){
-            if(num_nodes > std::pow(10, 6)){
-                throw std::runtime_error("The exact decision diagram contains more than one million nodes.");
-            }
-
-            if(u.state_info.count(layer + 1)){
-                auto new_state = u.state_info;
-                new_state.erase(layer + 1);
-                for(unsigned int neighbor : neighbors[layer]){
-                    new_state.erase(neighbor);
-                }
-
-                //look if there exists an equivalent node
-                auto one_arc_it = std::find_if(dd[layer + 1].begin(), dd[layer + 1].end(),
-                                               [&new_state](const Node &v) { return v.state_info == new_state; });
-                if(one_arc_it == dd[layer + 1].end()){
-                    dd[layer + 1].emplace_back(layer + 2, int(dd[layer + 1].size()), new_state);
-                    num_nodes++;
-                    u.one_arc = int(dd[layer + 1].size() - 1);
-                } else{
-                    u.one_arc = int(one_arc_it - dd[layer + 1].begin());
-                }
-                num_arcs++;
-
-                new_state = u.state_info;
-                new_state.erase(layer + 1);
-                auto zero_arc_it = std::find_if(dd[layer + 1].begin(), dd[layer + 1].end(),
-                                                [&new_state](const Node &v) { return v.state_info == new_state; });
-                if(zero_arc_it == dd[layer + 1].end()){
-                    dd[layer + 1].emplace_back(layer + 2, int(dd[layer + 1].size()), new_state);
-                    num_nodes++;
-                    u.zero_arc = int(dd[layer + 1].size() - 1);
-                } else{
-                    u.zero_arc = int(zero_arc_it - dd[layer + 1].begin());
-                }
-                num_arcs++;
-            } else{
-                auto zero_arc_it = std::find_if(dd[layer + 1].begin(), dd[layer + 1].end(),
-                                                [&u](const Node &v) { return v.state_info == u.state_info; });
-                if(zero_arc_it == dd[layer + 1].end()){
-                    dd[layer + 1].emplace_back(layer + 2, int(dd[layer + 1].size()), u.state_info);
-                    num_nodes++;
-                    u.zero_arc = int(dd[layer + 1].size() - 1);
-                } else{
-                    u.zero_arc = int(zero_arc_it - dd[layer + 1].begin());
-                }
-                num_arcs++;
-            }
-        }
-    }
-    std::cout << "Done building the exact decision diagram containing " << num_nodes << " nodes, " << num_arcs
-              << " arcs and width " << get_width(dd) << "." << std::endl;
-    return dd;
-}
-
 DecisionDiagram initial_decision_diagram(const Graph &g) {
     DecisionDiagram dd;
     dd.resize(g.ncount() + 1);
@@ -172,6 +93,117 @@ DecisionDiagram initial_decision_diagram(const Graph &g) {
     return dd;
 }
 
+DecisionDiagram exact_decision_diagram(const Graph &g) {
+    NeighborList neighbors = g.get_neighbor_list();
+    return exact_decision_diagram(g, neighbors);
+}
+
+DecisionDiagram exact_decision_diagram(const Graph &g, const NeighborList &neighbors) {
+    DecisionDiagram dd;
+    dd.resize(g.ncount() + 1);
+    int num_nodes = 0;
+    int num_arcs = 0;
+
+    StateInfo initial_state;
+    for(unsigned int i = 1; i <= g.ncount(); ++i){
+        initial_state.insert(initial_state.end(), i);
+    }
+
+    dd[0].emplace_back(1, 0, initial_state);
+    num_nodes++;
+
+    //maps state sizes to node indices with that state size
+    std::unordered_map< unsigned long , std::vector<int> > map_state_size_to_node_indices;
+
+    for(unsigned int layer = 0; layer < g.ncount(); ++layer){
+        dd[layer + 1].reserve(dd[layer].size() + 5);//some estimation for the size of the next layer, reserve some space for the vector
+        map_state_size_to_node_indices.reserve(dd[layer].size() + 5);
+        for(Node &u : dd[layer]){
+            if(num_nodes > std::pow(10, 6)){
+                throw std::runtime_error("The exact decision diagram contains more than one million nodes.");
+            }
+
+            if(u.state_info.count(layer + 1)){
+                auto new_state = u.state_info;
+                new_state.erase(layer + 1);
+                for(unsigned int neighbor : neighbors[layer]){
+                    new_state.erase(neighbor);
+                }
+
+                //check if there even exist nodes with state info of that size to possibly be equivalent to
+                if(not map_state_size_to_node_indices[new_state.size()].empty()){
+                    for(int index : map_state_size_to_node_indices[new_state.size()]){
+                        //check if nodes' states are equivalent
+                        if(new_state == dd[layer + 1][index].state_info){
+                            //redirect arc
+                            u.one_arc = index;
+                            break;
+                        }
+                    }
+                }
+                //found no equivalent node so construct one
+                if(u.one_arc == -1){
+                    dd[layer + 1].emplace_back(layer + 2, int(dd[layer + 1].size()), new_state);
+                    num_nodes++;
+                    u.one_arc = int(dd[layer + 1].size() - 1);
+                    map_state_size_to_node_indices[new_state.size()].push_back(u.one_arc); //new node, store index under size category
+                }
+                num_arcs++;
+
+                new_state = u.state_info;
+                new_state.erase(layer + 1);
+
+                //check if there even exist nodes with state info of that size to possibly be equivalent to
+                if(not map_state_size_to_node_indices[new_state.size()].empty()){
+                    for(int index : map_state_size_to_node_indices[new_state.size()]){
+                        //check if nodes' states are equivalent
+                        if(new_state == dd[layer + 1][index].state_info){
+                            //redirect arc
+                            u.zero_arc = index;
+                            break;
+                        }
+                    }
+                }
+                //found no equivalent node so construct one
+                if(u.zero_arc == -1){
+                    dd[layer + 1].emplace_back(layer + 2, int(dd[layer + 1].size()), new_state);
+                    num_nodes++;
+                    u.zero_arc = int(dd[layer + 1].size() - 1);
+                    map_state_size_to_node_indices[new_state.size()].push_back(u.zero_arc); //new node, store index under size category
+                }
+                num_arcs++;
+
+            } else{
+                //check if there even exist nodes with state info of that size to possibly be equivalent to
+                if(not map_state_size_to_node_indices[u.state_info.size()].empty()){
+                    for(int index : map_state_size_to_node_indices[u.state_info.size()]){
+                        //check if nodes' states are equivalent
+                        if(u.state_info == dd[layer + 1][index].state_info){
+                            //redirect arc
+                            u.zero_arc = index;
+                            break;
+                        }
+                    }
+                }
+                //found no equivalent node so construct one
+                if(u.zero_arc == -1){
+                    dd[layer + 1].emplace_back(layer + 2, int(dd[layer + 1].size()), u.state_info);
+                    num_nodes++;
+                    u.zero_arc = int(dd[layer + 1].size() - 1);
+                    map_state_size_to_node_indices[u.state_info.size()].push_back(u.zero_arc); //new node, store index under size category
+                }
+                num_arcs++;
+            }
+        }
+        map_state_size_to_node_indices.clear();
+    }
+    std::cout << "Done building the exact decision diagram containing " << num_nodes << " nodes, " << num_arcs
+              << " arcs and width " << get_width(dd) << "." << std::endl;
+    return dd;
+}
+
+PathLabelConflict::PathLabelConflict(Path path, Label label, Conflict conflict)
+        : path(std::move(path)), label(std::move(label)), conflict(std::move(conflict)) {}
 
 int intersection_size(const StateInfo &a, const StateInfo &b) {
     if(a.empty() or b.empty()) return 0;
@@ -180,7 +212,7 @@ int intersection_size(const StateInfo &a, const StateInfo &b) {
 
 void separate_edge_conflict(DecisionDiagram &dd, const NeighborList &neighbors, const PathLabelConflict &plc,
                             RedirectArcs redirect_arcs) {
-    //check assumptions? of conflict being minimal
+    //check assumptions of conflict being minimal. no, assume input comes from algorithm 2 and is correct
 
     Path path = plc.path;
     const Label &label = plc.label;
@@ -324,11 +356,11 @@ detect_edge_conflict(DecisionDiagram dd, const NeighborList &neighbors, double f
             }
             flow_val -= path_min_flow;
         } else{
+            std::cout << std::setprecision(25) << "Flow value left was " << flow_val << std::endl;
+            //the flow value got too small and floating errors likely occurred, return those conflicts that were found
             return conflict_info;
-//            throw std::runtime_error("Min flow on path was zero despite flow not being zero!");
         }
     }
-//    std::cout << "found " << conflict_info.size() << " conflicts" << std::endl;
     if(conflict_info.empty()){
         return conflict_info;
     }
@@ -346,8 +378,6 @@ detect_edge_conflict(DecisionDiagram dd, const NeighborList &neighbors, double f
                 result.push_back(conflict_info[i]);
             }
         }
-//        if(conflict_info.size() != large_flow_indices.size())
-//            std::cout << "Out of " << conflict_info.size() << " selected " << large_flow_indices.size() << " paths with flow " << largest_conflict_flow << " : " << conflict_flow << " indices " << large_flow_indices << std::endl;
         return result;
     }
     return conflict_info;
@@ -388,7 +418,8 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
     // introduced all variables and set objective function but have no rows/constraints
 
     //add rows in two phases: 1. in each level there is exactly one 1-arc with flow 1
-    // 2. flow conservation and //3. that variables are integer in range is set during adding those variables/columns
+    // 2. flow conservation and
+    // 3. that variables are integer in range n is only explicitly added as constraint if options for that is given
 
     //1.
     edge_index = 0; //count/track edges while iterating over them
@@ -408,8 +439,6 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
         }
         std::vector<double> vec_val(vec_ind.size(), 1.0); //this is just a vector full of 1.0 the size of vec_ind
         int num_one_arcs = int(vec_ind.size());
-
-//        COLORlp_addrow(flow_lp, num_one_arcs, vec_ind.data(), vec_val.data(), COLORlp_EQUAL, 1, nullptr);
         COLORlp_addrow(flow_lp, num_one_arcs, vec_ind.data(), vec_val.data(), COLORlp_GREATER_EQUAL, 1, nullptr);
     }
 
@@ -466,7 +495,7 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
     if(formulation == ExtraConstraints){
         std::vector<int> index = {0};
         std::vector<double> val = {1.0};
-        COLORlp_addrow(flow_lp, 1, index.data(), val.data(), COLORlp_EQUAL, 1, nullptr);//or COLORlp_GREATER_EQUAL
+        COLORlp_addrow(flow_lp, 1, index.data(), val.data(), COLORlp_EQUAL, 1, nullptr);
     }
     if(formulation == BoundConstraints){
         //input variable bounds as extra constraints
@@ -481,7 +510,7 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
         //add bound on objective value as constraint
         std::vector<int> index = {0, 1};
         std::vector<double> val = {1.0, 1.0};
-        COLORlp_addrow(flow_lp, 2, index.data(), val.data(), COLORlp_LESS_EQUAL, var_bound+1, nullptr);
+        COLORlp_addrow(flow_lp, 2, index.data(), val.data(), COLORlp_LESS_EQUAL, var_bound+1, nullptr);//TODO test a bit more :)
     }
 
     COLORlp_optimize(flow_lp);
@@ -494,7 +523,8 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
     solution.assign(solution.data(), solution.data() + num_columns);
 
     double double_safe_bound = 0.0;
-    if(model == LP){ //Neumaier's method to obtain safe bounds with directed rounding if LP and strict bounds on variables
+    if(model == LP){
+        //Neumaier's method to obtain safe bounds with directed rounding if LP and strict bounds on variables
         const int originalRounding = fegetround();
 
         std::vector<double> dual_solution;
@@ -565,7 +595,7 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
                                      std::to_string(residual.size()));
         }
 
-        //compute delta with set upper bounds for primal variables
+        //compute delta with known upper bounds for primal variables
         long double delta = 0;
         for(long double &res_val : residual){
             delta += var_bound * std::max(res_val, (long double) (0.0));
@@ -578,7 +608,6 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
 
         fesetround(originalRounding);
 
-//            std::cout << "'safe' lower bound is " << std::setprecision(20) << safe_bound << " with appx. dual bound " << dual_obj << " and delta " << delta  << "\nflow value was " << flow_val << std::endl;
         if(delta > std::pow(10, -6)){
             std::cout << "Warning: delta is quite big, larger than 10^-6: " << std::setprecision(25) << delta
                       << std::endl;
@@ -664,8 +693,6 @@ PathLabelConflict conflict_on_longest_path(const DecisionDiagram &dd, const Neig
     Label label;
     find_longest_path(dd, path, label);
 
-    //    std::cout << path << " and " << label << std::endl;
-
     //look for a conflict on said longest path
     for(int j = 1; j < int(path.size()); j++){
         if(not label[j]){
@@ -678,7 +705,6 @@ PathLabelConflict conflict_on_longest_path(const DecisionDiagram &dd, const Neig
             }
             //both vertex i and j of original graph are chosen. check if that is a conflict or not
             if(neighbors[i].count(j + 1)){
-//                std::cout << "plc: " << std::vector<int>(path.begin()+i, path.begin()+j +1) << " " << std::vector<bool>(label.begin()+i, label.begin()+j) << " " << i+1 << "," << j+1 << std::endl;
                 return PathLabelConflict(Path(path.begin() + i, path.begin() + j + 1),
                                          Label(label.begin() + i, label.begin() + j), std::make_tuple(i + 1, j + 1));
             }
@@ -688,120 +714,6 @@ PathLabelConflict conflict_on_longest_path(const DecisionDiagram &dd, const Neig
     return {{}, {}, std::make_tuple(-1, -1)};
 }
 
-std::vector<PathLabelConflict>
-experimental_conflict_on_longest_path(const DecisionDiagram &dd, const NeighborList &neighbors) {
-    int n = int(dd.size());
-    //use that dd is dag and find longest path (longest in regards to 1-arcs) using topological order of the dd
-    std::vector<std::vector<std::vector<int> > > prev(n);
-    std::vector<std::vector<int> > dist(n);
-    for(int layer = 0; layer < n; layer++){
-        dist[layer] = std::vector<int>(dd[layer].size(), std::numeric_limits<int>::min());
-        prev[layer].resize(dd[layer].size(), std::vector<int>{-1});
-    }
-    dist[0][0] = 0; //source vertex
-    for(int layer = 0; layer < n - 1; layer++){
-        for(int node = 0; node < int(dd[layer].size()); node++){
-            if((dd[layer][node].one_arc != -1)){
-                if(dist[layer + 1][dd[layer][node].one_arc] < dist[layer][node] + 1){
-                    dist[layer + 1][dd[layer][node].one_arc] = dist[layer][node] + 1;
-                    prev[layer + 1][dd[layer][node].one_arc].clear();
-                    prev[layer + 1][dd[layer][node].one_arc].push_back(node);
-                } else if(dist[layer + 1][dd[layer][node].one_arc] == dist[layer][node] + 1){
-                    prev[layer + 1][dd[layer][node].one_arc].push_back(node);
-                }
-            }
-            if(dist[layer + 1][dd[layer][node].zero_arc] < dist[layer][node]){
-                dist[layer + 1][dd[layer][node].zero_arc] = dist[layer][node];
-                prev[layer + 1][dd[layer][node].zero_arc].clear();
-                prev[layer + 1][dd[layer][node].zero_arc].push_back(node);
-            } else if(dist[layer + 1][dd[layer][node].zero_arc] == dist[layer][node]){
-                prev[layer + 1][dd[layer][node].zero_arc].push_back(node);
-            }
-        }
-    }
-
-
-    std::vector<Path> paths;
-//    paths.reserve(n);
-    std::vector<Label> labels;
-//    label.reserve(n);
-
-    int prev_node = 0;
-    paths.push_back({prev_node});
-    labels.emplace_back();
-    for(unsigned int layer = n - 1; layer > 0; layer--){
-        for(unsigned int i = 0, num_paths = paths.size(), new_num_paths = num_paths; i < num_paths; i++){
-            int last_node = paths[i].back();
-            for(int more_prevs = 1;
-                more_prevs < prev[layer][last_node].size(); more_prevs++){ //for each additional prev copy current path
-                paths.push_back(paths[i]);
-                labels.push_back(labels[i]);
-            }
-
-            prev_node = prev[layer][last_node].front();     //deal with first (if not only) prev node with the original path and thus different index
-            if(dd[layer - 1][prev_node].one_arc == paths[i].back()){
-                labels[i].push_back(oneArc);
-            } else{
-                labels[i].push_back(zeroArc);
-            }
-            paths[i].push_back(prev_node);
-
-            for(int current_prev = 1; current_prev < prev[layer][last_node].size(); current_prev++){
-                prev_node = prev[layer][last_node][current_prev];
-                if(dd[layer - 1][prev_node].one_arc == paths[new_num_paths - 1 + current_prev].back()){
-                    labels[new_num_paths - 1 + current_prev].push_back(oneArc);
-                } else{
-                    labels[new_num_paths - 1 + current_prev].push_back(zeroArc);
-                }
-                paths[new_num_paths - 1 + current_prev].push_back(prev_node);
-            }
-            new_num_paths += prev[layer][last_node].size() - 1;
-        }
-    }
-    for(int i = 0; i < paths.size(); i++){
-        std::reverse(paths[i].begin(), paths[i].end());
-        std::reverse(labels[i].begin(), labels[i].end());
-    }
-//    std::cout << path << " and " << label << std::endl;
-
-    std::cout << "found " << paths.size() << " paths" << std::endl;
-    for(int path = 0; path < paths.size(); path++){
-//        std::cout << "A path is: " << paths[path]  << " with length " << std::accumulate(labels[path].begin(), labels[path].end(), int(0))<< std::endl;
-    }
-
-    std::vector<PathLabelConflict> conflict_info;
-    std::set<Conflict> conflicts;
-    std::set<int> already_used_vertices;
-    //look for a conflict on said longest paths
-    for(int path = 0; path < paths.size(); path++){
-        for(int j = 1; j <
-                       int(paths[path].size()); j++){ //this way we find the first smallest conflict, important assumption for Algorithm 1
-            if((not labels[path][j]) or already_used_vertices.count(j + 1)){
-                continue;
-            }
-            for(int i = j - 1; i >= 0; i--){
-                if((not labels[path][i]) or already_used_vertices.count(i + 1)){
-                    continue;
-                }
-                //both vertex i and j of original graph are chosen. check if that is a conflict or not
-                if(neighbors[i].count(j + 1) and (not conflicts.count(std::make_tuple(i + 1, j + 1)))){
-                    already_used_vertices.insert(i + 1);
-                    already_used_vertices.insert(j + 1);
-//                  std::cout << "plc: " << std::vector<int>(path.begin()+i, path.begin()+j +1) << " " << std::vector<bool>(label.begin()+i, label.begin()+j) << " " << i+1 << "," << j+1 << std::endl;
-                    conflict_info.emplace_back(Path(paths[path].begin() + i, paths[path].begin() + j + 1),
-                                               Label(labels[path].begin() + i, labels[path].begin() + j),
-                                               std::make_tuple(i + 1, j + 1)
-                    );
-                    conflicts.insert(std::make_tuple(i + 1, j + 1));
-                    i = 0;
-                    j = int(paths[path].size()); //escape both loops, continue with next path
-                }
-            }
-        }
-    }
-    std::cout << conflict_info.size() << " paths had conflicts" << std::endl;
-    return conflict_info;
-}
 
 
 DecisionDiagram exact_decision_diagram_test(const Graph &g, const NeighborList &neighbors) {

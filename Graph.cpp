@@ -170,6 +170,7 @@ void Graph::read_graph6(const char *filename) {
     read_graph6_string(line);
 }
 
+//this function of reading in the graph6 format was taken from treedecomposition.com
 void Graph::read_graph6_string(std::string g6_string) {// Extract vertex count from graph6
     if(g6_string.substr(0, 1) == ":"){
         g6_string = g6_string.substr(1, g6_string.size());
@@ -274,7 +275,6 @@ Coloring Graph::dsatur(Permutation &ordering, const NeighborList &neighbors, con
     }
 
     if(clique.size() > 2){//ignore trivial or empty clique
-//        std::cout << "given clique" << std::endl;
         //fix color of the vertices of supplied clique and set saturation levels
         int color_index = 0;
         for(Vertex v : clique){
@@ -291,7 +291,6 @@ Coloring Graph::dsatur(Permutation &ordering, const NeighborList &neighbors, con
             saturation_level[v - 1] = std::numeric_limits<int>::min();
         }
     } else{
-//        std::cout << "no clique" << std::endl;
         //no clique given, only color a first vertex by it's max degree
         //find max degree vertex and select it as first colored vertex. ties are broken randomly if specified
         Vertex max_degree_vertex = 0;
@@ -445,7 +444,6 @@ Graph::dsatur_original(Permutation &ordering, const NeighborList &neighbors, con
     }
 
     if(clique.size() > 2){//ignore trivial or empty clique
-//        std::cout << "given clique" << std::endl;
         //fix color of the vertices of supplied clique and set saturation levels
         int color_index = 0;
         for(Vertex v : clique){
@@ -464,7 +462,6 @@ Graph::dsatur_original(Permutation &ordering, const NeighborList &neighbors, con
             uncolored_subgraph_degree[v - 1] = std::numeric_limits<int>::min();
         }
     } else{
-//        std::cout << "no clique" << std::endl;
         //no clique given, only color a first vertex by it's max degree
         //find max degree vertex and select it as first colored vertex. ties are broken randomly
         Vertex max_degree_vertex = 0;
@@ -622,7 +619,6 @@ Coloring Graph::max_connected_degree_coloring(Permutation &ordering, const Neigh
     }
 
     if(clique.size() > 2){//ignore trivial or empty clique
-//        std::cout << "given clique" << std::endl;
         //fix color of the vertices of supplied clique and set saturation levels
         int color_index = 0;
         for(Vertex v : clique){
@@ -639,7 +635,6 @@ Coloring Graph::max_connected_degree_coloring(Permutation &ordering, const Neigh
             num_selected_neighbors[v - 1] = std::numeric_limits<int>::min();
         }
     } else{
-//        std::cout << "no clique" << std::endl;
         //no clique given, only color a first vertex by it's max degree
         //find max degree vertex and select it as first colored vertex. ties are broken randomly
         Vertex max_degree_vertex = 0;
@@ -776,7 +771,6 @@ Permutation Graph::max_connected_degree_ordering(const NeighborList &neighbors, 
     }
 
     if(clique.size() > 2){//ignore trivial or empty clique
-//        std::cout << "given clique" << std::endl;
         //fix color of the vertices of supplied clique and set saturation levels
         int color_index = 0;
         for(Vertex v : clique){
@@ -790,7 +784,6 @@ Permutation Graph::max_connected_degree_ordering(const NeighborList &neighbors, 
             num_connected[v - 1] = std::numeric_limits<int>::min();
         }
     } else{
-//        std::cout << "no clique" << std::endl;
         //no clique given, only color a first vertex by it's max degree
         Vertex max_degree_vertex = 0;
         int max_degree = -1;
@@ -839,6 +832,94 @@ Permutation Graph::max_connected_degree_ordering(const NeighborList &neighbors, 
 }
 
 
+int Graph::constraint_graph_width() {
+    Graph g = *this;
+    g.peel_graph(1); //remove isolated vertices
+    NeighborList neighbors = g.get_neighbor_list();
+    //begin peeling starting from the minimum degree
+    int k = std::min_element(neighbors.begin(), neighbors.end(),
+                             [](const std::set<Vertex> &d_1, const std::set<Vertex> &d_2) {
+                                 return d_1.size() < d_2.size();
+                             })->size();
+    while(g.ncount()){
+        k++;
+        unsigned int current_node_count = g.ncount();
+        while(true){
+            g.peel_graph(k);
+            if(current_node_count == g.ncount() or g.ncount() == 0){
+                break;
+            }
+            current_node_count = g.ncount();
+        }
+    }
+    return k;
+}
+
+Permutation Graph::constraint_graph_ordering() {
+    int width = constraint_graph_width();
+    int n = int(_ncount);
+    Permutation ordering(n);
+    std::set<Vertex> unselected_vertices;
+    NeighborList neighbors = get_neighbor_list();
+    std::vector<int> degree(_ncount);
+    for(Vertex i = 1; i <= _ncount; ++i){
+        unselected_vertices.insert(unselected_vertices.end(), i);
+        degree[i - 1] = int(neighbors[i - 1].size());
+    }
+
+    for(int i = n; i >= 1; i--){
+        for(auto v_it = unselected_vertices.rbegin(); v_it != unselected_vertices.rend(); v_it++){
+            Vertex v = *v_it;
+            if(degree[v - 1] <= width + 1){
+                ordering[i - 1] = v;
+                unselected_vertices.erase(v);
+                for(auto neighbor : neighbors[v - 1]){
+                    degree[neighbor - 1]--;
+                }
+                break;
+            }
+        }
+    }
+    return ordering;
+}
+
+
+bool Graph::try_color_swap(Vertex max_saturated_vertex, const NeighborList &neighbors, Coloring &coloring,
+                           std::vector<int> &vertex_color) {
+    for(unsigned int j = 0; j < coloring.size(); j++){
+        for(unsigned int k = j + 1; k < coloring.size(); k++){
+            std::set<Vertex> neighbors_v_intersect_color_j;
+            std::set_intersection(neighbors[max_saturated_vertex - 1].begin(),
+                                  neighbors[max_saturated_vertex - 1].end(),
+                                  coloring[j].begin(), coloring[j].end(),
+                                  std::inserter(neighbors_v_intersect_color_j, neighbors_v_intersect_color_j.end()));
+
+            if(neighbors_v_intersect_color_j.size() == 1){
+                Vertex u = *neighbors_v_intersect_color_j.begin();
+                std::set<Vertex> neighbors_u_intersect_color_k;
+                std::set_intersection(neighbors[u - 1].begin(), neighbors[u - 1].end(),
+                                      coloring[k].begin(), coloring[k].end(),
+                                      std::inserter(neighbors_u_intersect_color_k,
+                                                    neighbors_u_intersect_color_k.end()));
+
+                if(neighbors_u_intersect_color_k.empty()){
+                    //we can swap colors around, i.e. color max_saturated vertex and u with j and k respectively
+                    coloring[j].erase(u);
+                    coloring[j].insert(max_saturated_vertex);
+                    coloring[k].insert(u);
+                    vertex_color[max_saturated_vertex - 1] = int(j);
+                    vertex_color[u - 1] = int(k);
+                    k = coloring.size();
+                    j = coloring.size();//exit loops, but exiting anyways
+                    return true;//was able to swap colors
+                }
+            }
+        }
+    }
+    return false; //unable to swap two colors
+}
+
+
 Permutation Graph::max_degree_ordering() const {
     NeighborList neighbors = get_neighbor_list();
     return max_degree_ordering(neighbors);
@@ -859,28 +940,12 @@ Permutation Graph::max_degree_ordering(const NeighborList &neighbors) const {
 }
 
 
-void Graph::remove_last_vertices(int num_to_be_removed) {
-    std::set<Vertex> remove_vertices;
-    for(int i = 0; i < num_to_be_removed; i++){
-        remove_vertices.insert(remove_vertices.begin(), int(_ncount) - i);
-    }
-    for(int edge_index = int(_ecount) - 1; edge_index >= 0; edge_index--){
-        if(remove_vertices.count(_elist[2 * edge_index]) or remove_vertices.count(_elist[2 * edge_index + 1])){
-            _elist.erase(std::next(_elist.begin(), 2 * edge_index + 1));
-            _elist.erase(std::next(_elist.begin(), 2 * edge_index));
-            _ecount--;
-        }
-    }
-    _ncount -= num_to_be_removed;
-}
-
-
-void Graph::peel_graph_ordered(int peeling_degree) {
+void Graph::peel_graph(int peeling_degree) {
     NeighborList neighbors = get_neighbor_list();
-    peel_graph_ordered(peeling_degree, neighbors);
+    peel_graph(peeling_degree, neighbors);
 }
 
-void Graph::peel_graph_ordered(int peeling_degree, const NeighborList &neighbors) {
+void Graph::peel_graph(int peeling_degree, const NeighborList &neighbors) {
     std::set<Vertex> small_degree_vertices;
     for(Vertex i = 1; i <= _ncount; i++){
         if(neighbors[i - 1].size() < peeling_degree){
@@ -888,7 +953,6 @@ void Graph::peel_graph_ordered(int peeling_degree, const NeighborList &neighbors
         }
     }
     remove_vertices_together(small_degree_vertices);
-//    std::cout << "peeled: " << ncount() << ", " << ecount() << std::endl;
 }
 
 void Graph::remove_vertex(Vertex remove) {
@@ -907,7 +971,7 @@ void Graph::remove_vertex(Vertex remove) {
 
 
 void Graph::remove_vertices(const std::set<Vertex> &to_remove) {
-    //order of removing vertices is important here, be removing later vertices first, we keep the numbering intact
+    //order of removing vertices is important here, by removing later vertices first, we keep the labeling intact
     for(auto v_it = to_remove.rbegin(); v_it != to_remove.rend(); v_it++){
         remove_vertex(*v_it);
     }
@@ -943,7 +1007,6 @@ void Graph::remove_dominated_vertices() {
 
 
 void Graph::remove_dominated_vertices(const NeighborList &neighbors) {
-
     std::set<Vertex> dominated_vertices;
     for(Vertex v = 1; v <= _ncount; v++){
         for(Vertex w = v + 1; w <= _ncount; w++){
@@ -960,8 +1023,34 @@ void Graph::remove_dominated_vertices(const NeighborList &neighbors) {
         }
     }
     remove_vertices_together(dominated_vertices);
-//    std::cout << "dominated: " << ncount() << ", " << ecount() << std::endl;
 }
+
+
+std::set<Vertex> Graph::find_clique(int nrbranches) const {
+    if(nrbranches == 0){
+        return {};
+    }
+
+    //find size of some (optimally maximal) clique
+    COLORset *cliques = (COLORset *) NULL;
+    int ncliques = 0;
+    int pval = 0;
+    if(nrbranches == -1)
+        nrbranches = std::max(int(ncount()) / 10 + 10, 100);
+    std::vector<int> one_weights(ncount(), 1);
+    int rval = COLORclique_ostergard(&cliques, &ncliques, int(ncount()), int(ecount()), shifted_elist().data(),
+                                     one_weights.data(), COLOR_MAXINT, &pval, nrbranches);
+    if(rval) std::cout << "Failed in COLORclique_ostergard." << std::endl;
+
+    std::set<Vertex> clique;
+    std::transform(cliques[0].members, cliques[0].members + cliques[0].count, std::inserter(clique, clique.end()),
+                   [](int v) { return (Vertex) v + 1; });
+    return clique;
+}
+
+
+
+
 
 
 void Graph::vertex_fusion(const std::set<Vertex> &clique) {
@@ -982,7 +1071,6 @@ void Graph::vertex_fusion(const std::set<Vertex> &clique, const NeighborList &ne
             for(Vertex u : clique){
                 if(w == u)
                     continue;
-
             }
         }
     }
@@ -1022,113 +1110,6 @@ void Graph::edge_addition(const std::set<Vertex> &clique, const NeighborList &ne
     std::cout << "edge addition : " << ncount() << ", " << ecount() << std::endl;
 }
 
-
-std::set<Vertex> Graph::find_clique(int nrbranches) const {
-    //find size of some (optimally maximal) clique
-    COLORset *cliques = (COLORset *) NULL;
-    int ncliques = 0;
-    int pval = 0;
-    if(nrbranches == -1)
-        nrbranches = std::max(int(ncount()) / 10 + 10, 100);
-    std::vector<int> one_weights(ncount(), 1);
-    int rval = COLORclique_ostergard(&cliques, &ncliques, int(ncount()), int(ecount()), shifted_elist().data(),
-                                     one_weights.data(), COLOR_MAXINT, &pval, nrbranches);
-    if(rval) std::cout << "Failed in COLORclique_ostergard." << std::endl;
-
-    std::set<Vertex> clique;
-    std::transform(cliques[0].members, cliques[0].members + cliques[0].count, std::inserter(clique, clique.end()),
-                   [](int v) { return (Vertex) v + 1; });
-
-//    std::cout << "Found clique of size " << pval << std::endl;
-    return clique;
-}
-
-int Graph::constraint_graph_width() {
-    Graph g = *this;
-    g.peel_graph_ordered(1); //remove isolated vertices
-    NeighborList neighbors = g.get_neighbor_list();
-    //begin peeling starting from the minimum degree
-    int k = std::min_element(neighbors.begin(), neighbors.end(),
-                             [](const std::set<Vertex> &d_1, const std::set<Vertex> &d_2) {
-                                 return d_1.size() < d_2.size();
-                             })->size();
-    while(g.ncount()){
-        k++;
-        unsigned int current_node_count = g.ncount();
-        while(true){
-            g.peel_graph_ordered(k);
-            if(current_node_count == g.ncount() or g.ncount() == 0){
-                break;
-            }
-            current_node_count = g.ncount();
-        }
-    }
-    return k;
-}
-
-Permutation Graph::constraint_graph_ordering() {
-    int width = constraint_graph_width();
-    int n = int(_ncount);
-    Permutation ordering(n);
-    std::set<Vertex> unselected_vertices;
-    NeighborList neighbors = get_neighbor_list();
-    std::vector<int> degree(_ncount);
-    for(Vertex i = 1; i <= _ncount; ++i){
-        unselected_vertices.insert(unselected_vertices.end(), i);
-        degree[i - 1] = int(neighbors[i - 1].size());
-    }
-
-    for(int i = n; i >= 1; i--){
-        for(auto v_it = unselected_vertices.rbegin(); v_it != unselected_vertices.rend(); v_it++){
-            Vertex v = *v_it;
-            if(degree[v - 1] <= width + 1){
-                ordering[i - 1] = v;
-                unselected_vertices.erase(v);
-                for(auto neighbor : neighbors[v - 1]){
-                    degree[neighbor - 1]--;
-                }
-                break;
-            }
-        }
-    }
-    return ordering;
-}
-
-
-bool try_color_swap(Vertex max_saturated_vertex, const NeighborList &neighbors, Coloring &coloring,
-                    std::vector<int> &vertex_color) {
-    for(unsigned int j = 0; j < coloring.size(); j++){
-        for(unsigned int k = j + 1; k < coloring.size(); k++){
-            std::set<Vertex> neighbors_v_intersect_color_j;
-            std::set_intersection(neighbors[max_saturated_vertex - 1].begin(),
-                                  neighbors[max_saturated_vertex - 1].end(),
-                                  coloring[j].begin(), coloring[j].end(),
-                                  std::inserter(neighbors_v_intersect_color_j, neighbors_v_intersect_color_j.end()));
-
-            if(neighbors_v_intersect_color_j.size() == 1){
-                Vertex u = *neighbors_v_intersect_color_j.begin();
-                std::set<Vertex> neighbors_u_intersect_color_k;
-                std::set_intersection(neighbors[u - 1].begin(), neighbors[u - 1].end(),
-                                      coloring[k].begin(), coloring[k].end(),
-                                      std::inserter(neighbors_u_intersect_color_k,
-                                                    neighbors_u_intersect_color_k.end()));
-
-                if(neighbors_u_intersect_color_k.empty()){
-                    //we can swap colors around, i.e. color max_saturated vertex and u with j and k respectively
-                    coloring[j].erase(u);
-                    coloring[j].insert(max_saturated_vertex);
-                    coloring[k].insert(u);
-                    vertex_color[max_saturated_vertex - 1] = int(j);
-                    vertex_color[u - 1] = int(k);
-                    k = coloring.size();
-                    j = coloring.size();//exit loops, but exiting anyways
-                    return true;//was able to swap colors
-                }
-            }
-        }
-    }
-    return false; //unable to swap two colors
-}
 
 
 

@@ -2,7 +2,8 @@
 
 
 void Statistics::print() const {
-    if(num_conflicts or num_longest_path_conflicts){//if we never found any conflicts that means we used the exact decision diagram
+    if(num_conflicts or num_longest_path_conflicts){
+        //if we never found any conflicts that means we used the exact decision diagram
         std::cout << "Size of decision diagram at the end: " << decision_diagram_size << " nodes, "
                   << decision_diagram_arcs
                   << " arcs and width " << decision_diagram_width << "." << std::endl;
@@ -68,13 +69,7 @@ std::ostream &operator<<(std::ostream &s, std::chrono::duration<double> duration
     auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
     duration -= milliseconds;
     s << milliseconds.count() << "ms";
-
-    //not use microseconds, not necessary for benchmarks
-//    if(not milliseconds.count()) {
-//        auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(duration);
-//        duration -= microseconds;
-//        s <<" "<< microseconds.count() << "us";
-//    }
+    //stop at milliseconds, we don't need any more precision than that
 }
 
 DDColors::DDColors(const char *filename, Options options) : graph(filename), opt(options), stats(Statistics()) {
@@ -91,7 +86,7 @@ void DDColors::initialise() {
     stats.start_time = std::chrono::steady_clock::now();
 
     if(opt.preprocess_graph){
-        preprocessing_graph();
+        preprocessing_graph(opt.clique_num_branches);
     } else if(opt.use_clique_in_ordering){
         clique = graph.find_clique(opt.clique_num_branches);
     }
@@ -104,7 +99,7 @@ void DDColors::initialise() {
     Permutation dsatur_ordering;
     Permutation dsatur_original_ordering;
     Permutation max_connected_degree_ordering;
-    neighbors = graph.get_neighbor_list(); //get neighbors once for all three euristics
+    neighbors = graph.get_neighbor_list(); //get neighbors once for all three heuristics
     heuristic_bound = std::min(heuristic_bound, int(graph.dsatur(dsatur_ordering, neighbors, clique).size()));
     heuristic_bound = std::min(heuristic_bound, int(graph.dsatur_original(dsatur_original_ordering, neighbors, clique).size()));
     heuristic_bound = std::min(heuristic_bound, int(graph.max_connected_degree_coloring(max_connected_degree_ordering, neighbors, clique).size()));
@@ -116,10 +111,10 @@ void DDColors::initialise() {
         case Graph::Dsatur:
             graph_ordering = dsatur_ordering;
             break;
-        case Graph::Dsatur_original:
+        case Graph::DsaturOriginal:
             graph_ordering = dsatur_original_ordering;
             break;
-        case Graph::Max_Connected_degree:
+        case Graph::MaxConnectedDegree:
             graph_ordering = max_connected_degree_ordering;
             break;
         case Graph::MinWidth:
@@ -143,7 +138,7 @@ void DDColors::initialise() {
 
 
 DDColors::~DDColors() {
-    //anything else?
+    //only need to free the environment, the rest has default constructors
     COLORlp_free_env();
 }
 
@@ -175,6 +170,7 @@ int DDColors::run() {
         lower_bound = int(std::round(ip_flow));
         stats.num_ip_solved = 1;
     }else if(opt.algorithm == Options::ExactFractionalNumber){
+        std::cout << "Heuristic bound is " << heuristic_bound << std::endl;
         DecisionDiagram dd = exact_decision_diagram(graph, neighbors);
         stats.decision_diagram_size = num_nodes(dd);
         stats.decision_diagram_arcs = num_arcs(dd);
@@ -198,6 +194,25 @@ int DDColors::run() {
         Statistics::pretty_time(stats.execution_time);
     }
     return lower_bound;
+}
+
+
+void DDColors::longest_path_refinement(DecisionDiagram &dd) {
+    stats.num_longest_path_conflicts = opt.num_longest_path_iterations;
+    for(int longest_path_iteration = 0;
+        longest_path_iteration < opt.num_longest_path_iterations; longest_path_iteration++){
+        PathLabelConflict plc = conflict_on_longest_path(dd, neighbors);
+        if(plc.path.empty()){
+            std::cout << "Longest path procedure did not find a conflict" << std::endl;
+            stats.num_longest_path_conflicts = longest_path_iteration;
+            break;
+        }
+        separate_edge_conflict(dd, neighbors, plc, opt.redirect_arcs);
+
+    }
+    if(opt.num_longest_path_iterations){
+        std::cout << "Finished longest path procedure, begin iterative refinement" << std::endl;
+    }
 }
 
 
@@ -324,8 +339,6 @@ Coloring DDColors::primal_heuristic(DecisionDiagram dd) {
                 bool recolored = heuristic_try_color_swap(i, neighbors, coloring);
                 if(not recolored){
                     coloring.push_back({i});
-                } else{
-//                        std::cout << "Swapped color in heuristic" << std::endl;
                 }
                 coloring_selected_vertices.insert(coloring_selected_vertices.end(), i);
             }
@@ -416,8 +429,6 @@ Coloring DDColors::primal_heuristic(DecisionDiagram dd, const NeighborList &neig
                 bool recolored = heuristic_try_color_swap(i, neighbors, coloring);
                 if(not recolored){
                     coloring.push_back({i});
-                } else{
-//                        std::cout << "Swapped color in heuristic" << std::endl;
                 }
                 coloring_selected_vertices.insert(coloring_selected_vertices.end(), i);
             }
@@ -425,6 +436,38 @@ Coloring DDColors::primal_heuristic(DecisionDiagram dd, const NeighborList &neig
         }
     }
     return coloring;
+}
+
+
+bool DDColors::heuristic_try_color_swap(Vertex vertex, const NeighborList &neighbors, Coloring &coloring) {
+    for(unsigned int j = 0; j < coloring.size(); j++){
+        for(unsigned int k = j + 1; k < coloring.size(); k++){
+            std::set<Vertex> neighbors_v_intersect_color_j;
+            std::set_intersection(neighbors[vertex - 1].begin(), neighbors[vertex - 1].end(),
+                                  coloring[j].begin(), coloring[j].end(),
+                                  std::inserter(neighbors_v_intersect_color_j, neighbors_v_intersect_color_j.end()));
+
+            if(neighbors_v_intersect_color_j.size() == 1){
+                Vertex u = *neighbors_v_intersect_color_j.begin();
+                std::set<Vertex> neighbors_u_intersect_color_k;
+                std::set_intersection(neighbors[u - 1].begin(), neighbors[u - 1].end(),
+                                      coloring[k].begin(), coloring[k].end(),
+                                      std::inserter(neighbors_u_intersect_color_k,
+                                                    neighbors_u_intersect_color_k.end()));
+
+                if(neighbors_u_intersect_color_k.empty()){
+                    //we can swap colors around, i.e. color max_saturated vertex and u with j and k respectively
+                    coloring[j].erase(u);
+                    coloring[j].insert(vertex);
+                    coloring[k].insert(u);
+                    k = coloring.size();
+                    j = coloring.size();//exit loop, but exiting anyways
+                    return true;//was able to swap colors
+                }
+            }
+        }
+    }
+    return false; //unable to swap two colors
 }
 
 int DDColors::heuristic_iterative_refinement() {
@@ -455,9 +498,6 @@ int DDColors::heuristic_iterative_refinement() {
             if(lower_bound == upper_bound) break;
         }
 
-//        double lp_flow = compute_flow_solution(dd, LP, upper_bound);
-//        std::cout << "lp: " << lp_flow << " vs ip: " << flow_value << " gap of " << double(flow_value)/double(lp_flow) << std::endl;
-
         int coloring_size;
         std::vector<PathLabelConflict> conflict_info;
 
@@ -468,17 +508,16 @@ int DDColors::heuristic_iterative_refinement() {
                 print_bounds(dd);
                 if(lower_bound == upper_bound) break;
             }
-//            std::cout << "bounds: lower " << lower_bound << " upper " << upper_bound << " coloring " << coloring_size << std::endl;
             conflict_info = detect_edge_conflict(dd, neighbors, flow_value, model, opt.find_conflicts,
                                                  opt.path_decomposition);
-        } else if(model == LP){//distinction is necessary because combined function behaves differently in IP case
+        } else if(model == LP){
+            //distinction is necessary because combined function behaves differently in IP case
             std::tie(conflict_info, coloring_size) = find_conflict_and_primal_heuristic(dd, flow_value, model);
             if(coloring_size < upper_bound){
                 update_upper_bound(coloring_size);
                 print_bounds(dd);
                 if(lower_bound == upper_bound) break;
             }
-//            std::cout << "bounds: lower " << lower_bound << " upper " << upper_bound << std::endl;
         }
 
         if(conflict_info.empty()){
@@ -533,41 +572,10 @@ void DDColors::print_bounds(const DecisionDiagram& dd) const {
 }
 
 
-void DDColors::longest_path_refinement(DecisionDiagram &dd) {
-    stats.num_longest_path_conflicts = opt.num_longest_path_iterations;
-    enum Mode{
-        normal, experimental
-    };
-    Mode mode = normal;
-    for(int longest_path_iteration = 0;
-        longest_path_iteration < opt.num_longest_path_iterations; longest_path_iteration++){
-        if(mode == normal){
-            PathLabelConflict plc = conflict_on_longest_path(dd, neighbors);
-            if(plc.path.empty()){
-                std::cout << "Longest path procedure did not find a conflict" << std::endl;
-                stats.num_longest_path_conflicts = longest_path_iteration;
-                break;
-            }
-            separate_edge_conflict(dd, neighbors, plc, opt.redirect_arcs);
-        } else if(mode == experimental){
-            std::vector<PathLabelConflict> conflict_info = experimental_conflict_on_longest_path(dd, neighbors);
-            if(conflict_info.empty()){
-                std::cout << "Longest path procedure did not find a conflict" << std::endl;
-                stats.num_longest_path_conflicts = longest_path_iteration;
-                break;
-            }
-            for(PathLabelConflict &plc : conflict_info){
-                separate_edge_conflict(dd, neighbors, plc, opt.redirect_arcs);
-            }
-        }
-    }
-    if(opt.num_longest_path_iterations){
-        std::cout << "Finished longest path procedure, begin iterative refinement" << std::endl;
-    }
-}
 
 
-//Extra stuff
+
+// combining conflict detection and primal heuristic as one single path decomposition method
 std::pair<std::vector<PathLabelConflict>, int>
 DDColors::find_conflict_and_primal_heuristic(DecisionDiagram &dd, double flow_val, Model model) {
     //  conflict detection
@@ -683,8 +691,8 @@ DDColors::find_conflict_and_primal_heuristic(DecisionDiagram &dd, double flow_va
             flow_val -= path_min_flow;
         } else if(continue_conflict_detection){
             std::cout << std::setprecision(25) << "Flow value left was " << flow_val << std::endl;
+            //the flow value got too small and floating errors likely occurred, return those conflicts that were found
             continue_conflict_detection = false;
-//            throw std::runtime_error("Min flow on path was zero despite flow not being zero! " + std::to_string(flow_val));
         }
 
         continue_conflict_detection = continue_conflict_detection and
@@ -704,8 +712,6 @@ DDColors::find_conflict_and_primal_heuristic(DecisionDiagram &dd, double flow_va
         }
     }
 
-//    std::cout << "found " << conflict_info.size() << " conflicts" << std::endl;
-
 
     //exception here: first do the primal heuristic stuff and the the code for LargestFlowConflict
     if(int(coloring_selected_vertices.size()) < n){
@@ -713,7 +719,6 @@ DDColors::find_conflict_and_primal_heuristic(DecisionDiagram &dd, double flow_va
         std::set_difference(all_vertices.begin(), all_vertices.end(),
                             coloring_selected_vertices.begin(), coloring_selected_vertices.end(),
                             std::inserter(not_selected_vertices, not_selected_vertices.begin()));
-//            std::cout << "S: " << selected_vertices << " and not S: " << not_selected_vertices << std::endl;
         for(auto it = not_selected_vertices.begin(); it != not_selected_vertices.end();
             it = not_selected_vertices.erase(it)){ //return iterator following iterator that was deleted, acts as ++
             unsigned int i = *it;
@@ -737,8 +742,6 @@ DDColors::find_conflict_and_primal_heuristic(DecisionDiagram &dd, double flow_va
                 bool recolored = heuristic_try_color_swap(i, neighbors, coloring);
                 if(not recolored){
                     coloring.push_back({i});
-                } else{
-//                    std::cout << "Swapped color in heuristic" << std::endl;
                 }
                 coloring_selected_vertices.insert(coloring_selected_vertices.end(), i);
             }
@@ -759,10 +762,6 @@ DDColors::find_conflict_and_primal_heuristic(DecisionDiagram &dd, double flow_va
                 result.push_back(conflict_info[i]);
             }
         }
-
-//        if(conflict_info.size() != result.size())
-//            std::cout << "Out of " << conflict_info.size() << " selected " << result.size() << " paths with max flow " << *std::max_element(conflict_flow.begin(), conflict_flow.end()) << std::endl;//<< " : " << conflict_flow << " indices " << large_flow_indices << std::endl;
-
         return std::make_pair(result, coloring.size());
     }
 
@@ -782,9 +781,8 @@ void DDColors::preprocessing_graph(int nbranches) {
         graph.remove_dominated_vertices();
         //look for clique to get lower bound on chromatic number
         std::set<Vertex> tclique = graph.find_clique(nbranches);
-        clique_size = std::max(clique_size, int(clique.size()));
-
-        graph.peel_graph_ordered(clique_size);
+        clique_size = std::max(clique_size, int(tclique.size()));
+        graph.peel_graph(clique_size);
 
         if(graph.ncount() == 0 or clique_size == heuristic_bound){
             //can return with clique size/lower bound
@@ -803,33 +801,4 @@ void DDColors::preprocessing_graph(int nbranches) {
 }
 
 
-bool heuristic_try_color_swap(Vertex vertex, const NeighborList &neighbors, Coloring &coloring) {
-    for(unsigned int j = 0; j < coloring.size(); j++){
-        for(unsigned int k = j + 1; k < coloring.size(); k++){
-            std::set<Vertex> neighbors_v_intersect_color_j;
-            std::set_intersection(neighbors[vertex - 1].begin(), neighbors[vertex - 1].end(),
-                                  coloring[j].begin(), coloring[j].end(),
-                                  std::inserter(neighbors_v_intersect_color_j, neighbors_v_intersect_color_j.end()));
 
-            if(neighbors_v_intersect_color_j.size() == 1){
-                Vertex u = *neighbors_v_intersect_color_j.begin();
-                std::set<Vertex> neighbors_u_intersect_color_k;
-                std::set_intersection(neighbors[u - 1].begin(), neighbors[u - 1].end(),
-                                      coloring[k].begin(), coloring[k].end(),
-                                      std::inserter(neighbors_u_intersect_color_k,
-                                                    neighbors_u_intersect_color_k.end()));
-
-                if(neighbors_u_intersect_color_k.empty()){
-                    //we can swap colors around, i.e. color max_saturated vertex and u with j and k respectively
-                    coloring[j].erase(u);
-                    coloring[j].insert(vertex);
-                    coloring[k].insert(u);
-                    k = coloring.size();
-                    j = coloring.size();//exit loop, but exiting anyways
-                    return true;//was able to swap colors
-                }
-            }
-        }
-    }
-    return false; //unable to swap two colors
-}

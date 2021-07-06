@@ -1,3 +1,9 @@
+
+/*
+ * main.cpp
+ * Purpose : program interface, allowing to set options for the execution of the algorithm
+ */
+
 #include <iostream>
 #include <getopt.h>
 
@@ -14,6 +20,15 @@
 //TODO soft time limit??
 //TODO option pass initial upper bound
 //TODO option to output or write coloring to a file when found
+//TODO could optimize building of exact dd by implementing a better lookup/check for equivalent nodes, now it takes O(W^2)
+
+//parallel -j 1 "ulimit -m 20000000 ulimit -v 20000000 u; ./ddcolors -m e -p -k" :::  ../Graphs/queen8_8.col ../Graphs/DSJC1000.1.col ../Graphs/DSJC250.1.col ../Graphs/DSJC250.5.col ../Graphs/DSJC500.1.col ../Graphs/DSJC500.5.col  ../Graphs/wap01a.col ../Graphs/wap02a.col ../Graphs/wap03a.col ../Graphs/wap04a.col ../Graphs/wap07a.col ../Graphs/wap08a.col >>test.txt
+
+
+/*
+ * print_help : prints the usage and parameters of the program
+ * program_header : prints some runtime conditions of the program, like the argument string and and when it was called
+ */
 
 void print_help(){
     std::cout<<"Usage: ddcolors.exe [options] graph"<<std::endl;
@@ -72,26 +87,9 @@ int program_header(int ac, char **av) {
     printf("##############################################################\n");
 }
 
-//std::map<char , Options> init_settings(){
-//    std::map<char , Options> settings;
-//
-//    settings['A'].vertex_ordering = Graph::Lexicographic;
-//    settings['B'];//already the standard setting
-//    settings['C'].vertex_ordering = Graph::Max_Connected_degree;
-//    settings['D'].vertex_ordering = Graph::Max_Connected_degree;
-//    settings['D'].redirect_arcs = MostSimilarNode;
-//    settings['E'].vertex_ordering = Graph::Lexicographic;
-//    settings['E'].algorithm = Options::ExactCompilation;
-//    settings['F'].algorithm = Options::ExactCompilation;
-//    settings['G'].vertex_ordering = Graph::Max_Connected_degree;
-//    settings['G'].algorithm = Options::ExactCompilation;
-//    settings['H'].dsatur_only = true;//ignores all other options
-//    return settings;
-//}
-
-
 int main(int argc, char *argv[]) {
 
+    //TODO remove
     if(0){
         Graph g(4, 3, {1, 3, 3, 4, 4, 2});
         NeighborList nlist = g.get_neighbor_list();
@@ -213,17 +211,17 @@ int main(int argc, char *argv[]) {
     if(0){
         Graph g(4, 3, {1, 3, 3, 4, 4, 2});
         DDColors ddcol(g, {});
-        int lower_bound = ddcol.basic_iterative_refinement();
+//        int lower_bound = ddcol.basic_iterative_refinement();
 
-        std::cout << "lower bound is " << lower_bound << std::endl;
+//        std::cout << "lower bound is " << lower_bound << std::endl;
     }
 
     if(0){
         std::string filename = "../Graphs/mulsol.i.1.col";
         DDColors ddcol(filename.c_str(), {});
         //int lower_bound = ddcol.basic_iterative_refinement();
-        int lower_bound = ddcol.heuristic_iterative_refinement();
-        std::cout << "lower bound is " << lower_bound << std::endl;
+//        int lower_bound = ddcol.heuristic_iterative_refinement();
+//        std::cout << "lower bound is " << lower_bound << std::endl;
     }
 
     if(0){
@@ -372,24 +370,6 @@ int main(int argc, char *argv[]) {
         std::cout << DDColors(g, opt).run() << std::endl;
     }
 
-
-//    if(1){
-//        struct COLORlp {
-//            GRBmodel *model;
-//            double dbl_cutoff;
-//        };
-//
-//        static     GRBenv *grb_env = NULL;
-//        //init env
-//        int rval = 0;
-//        if (!grb_env) {
-//            rval = GRBloadenv (&grb_env, NULL);
-//            std::cout << "code: " << rval << std::endl;
-//        }
-//        COLORlp* p;
-//    }
-
-
     if(0){
         SCIP_RETCODE retcode;
 
@@ -403,11 +383,9 @@ int main(int argc, char *argv[]) {
         }
     }
 
-
     if(0){
         test();
     }
-
 
     if(0){
 //        Graph g(4, 3, {1, 3, 3, 4, 4, 2});
@@ -420,7 +398,6 @@ int main(int argc, char *argv[]) {
         compute_flow_solution_SCIP(dd, IP, -1);
         validate_flow_solution_SCIPexact(dd, 0, IP, -1);
     }
-
 
     if(0){
         std::vector<Vertex> edge_list;
@@ -462,16 +439,16 @@ int main(int argc, char *argv[]) {
 //        opt.vertex_ordering = Graph::Lexicographic;
         opt.num_longest_path_iterations = 0;
 
-        DDColors(g, opt).preprocessing_graph();
+//        DDColors(g, opt).preprocessing_graph();
 
 //        DDColors(g, opt).run();
-        g.peel_graph_ordered(bound);
-        g.peel_graph_ordered(bound);
-        g.peel_graph_ordered(bound);
+        g.peel_graph(bound);
+        g.peel_graph(bound);
+        g.peel_graph(bound);
 //        DDColors(g, opt).run();
-        g.peel_graph_ordered(bound);
+        g.peel_graph(bound);
 //        DDColors(g, opt).run();
-        g.peel_graph_ordered(bound);
+        g.peel_graph(bound);
         DDColors(g, opt).run();
 
     }
@@ -486,7 +463,7 @@ int main(int argc, char *argv[]) {
         while(true){
             num_nodes_previous_iteration = g.ncount();
             g.remove_dominated_vertices();
-            g.peel_graph_ordered(bound);
+            g.peel_graph(bound);
             if(num_nodes_previous_iteration == g.ncount())
                 break;
         }
@@ -546,7 +523,7 @@ int main(int argc, char *argv[]) {
         std::cout << hint << std::endl;
 
         DDColors ddc(g);
-        ddc.preprocessing_graph();
+//        ddc.preprocessing_graph();
     }
 
     if(0){
@@ -555,9 +532,9 @@ int main(int argc, char *argv[]) {
         NeighborList neighbors = g.get_neighbor_list();
         DecisionDiagram dd = exact_decision_diagram(g);
         double ip_flow = compute_flow_solution(dd, IP, Normal);
-        int colorsize = int(DDColors::primal_heuristic(dd, neighbors).size());
+//        int colorsize = int(DDColors::primal_heuristic(dd, neighbors).size());
 
-        std::cout << "flow bound " << ip_flow << " vs color bound " << colorsize << std::endl;
+//        std::cout << "flow bound " << ip_flow << " vs color bound " << colorsize << std::endl;
 
 
     }
@@ -615,7 +592,6 @@ int main(int argc, char *argv[]) {
 
 
 //return 0;
-    Options dd_settings{};
 
     int opt;
     int option_index = 0;
@@ -636,14 +612,12 @@ int main(int argc, char *argv[]) {
             {"clique",          optional_argument, nullptr, 'k'},
             {"randomness",      no_argument,       nullptr, 'z'},
     };
-
+    Options dd_settings{};
     while((opt = getopt_long(argc, argv, "hitap::k::zc:o:r:l:m:d:f:", long_options, &option_index)) != -1){
         switch(opt){
 
             default:
             case '?':                                                       //getopt itself will return an error message
-//                std::cout << "The specified argument " << char(opt) << " is not an option of ddcolors." << std::endl;
-//                std::cout << "Program failed." << std::endl;
                 return -1;
             case 'h':
                 print_help();
@@ -702,11 +676,11 @@ int main(int argc, char *argv[]) {
                 if(*optarg == 'l'){
                     dd_settings.vertex_ordering = Graph::OrderType::Lexicographic;
                 } else if(*optarg == 'm'){
-                    dd_settings.vertex_ordering = Graph::OrderType::Max_Connected_degree;
+                    dd_settings.vertex_ordering = Graph::OrderType::MaxConnectedDegree;
                 } else if(*optarg == 'd'){
                     dd_settings.vertex_ordering = Graph::OrderType::Dsatur;
                 } else if(*optarg == 'o'){
-                    dd_settings.vertex_ordering = Graph::OrderType::Dsatur_original;
+                    dd_settings.vertex_ordering = Graph::OrderType::DsaturOriginal;
                 } else if(*optarg == 'w'){
                     dd_settings.vertex_ordering = Graph::OrderType::MinWidth;
                 } else{
@@ -793,21 +767,21 @@ int main(int argc, char *argv[]) {
     try{
         program_header(argc, argv);
         std::cout << "Begin ddcolors:" << std::endl;
-        Graph g(filename);
-        DDColors ddcolors(g, dd_settings);
+
+        DDColors ddcolors(filename, dd_settings);
 
         int chromatic_number = ddcolors.run();
 
         if(dd_settings.algorithm == Options::HeuristicOnly){
             std::cout << "Heuristic bound of input graph is " << chromatic_number << std::endl;
         }else if(dd_settings.algorithm == Options::ExactFractionalNumber){
-            std::cout << "Fractional chromatic number of input graph is " << ddcolors.fractional_chromatic
-            << " thus " << chromatic_number << " is a lower bound";
-            if(chromatic_number == ddcolors.upper_bound){
-                std::cout << ", this is equal to the upper bound of " << ddcolors.upper_bound
+            std::cout << "Safe lower bound for fractional chromatic number of input graph is " << std::setprecision(20)
+            << ddcolors.get_fractional_chromatic_number() << " thus " << chromatic_number << " is a lower bound";
+            if(chromatic_number == ddcolors.get_upper_bound()){
+                std::cout << ", this is equal to the upper bound of " << ddcolors.get_upper_bound()
                 << " and therefore enough to determine the chromatic number." << std::endl;
             } else{
-                std::cout << ", this is not equal to the upper bound of " << ddcolors.upper_bound
+                std::cout << ", this is not equal to the upper bound of " << ddcolors.get_upper_bound()
                 << " and therefore not enough to determine the chromatic number." << std::endl;
             }
         } else
