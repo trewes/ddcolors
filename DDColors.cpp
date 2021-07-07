@@ -101,9 +101,25 @@ void DDColors::initialise() {
     Permutation dsatur_original_ordering;
     Permutation max_connected_degree_ordering;
     neighbors = graph.get_neighbor_list(); //get neighbors once for all three heuristics
-    heuristic_bound = std::min(heuristic_bound, int(graph.dsatur(dsatur_ordering, neighbors, clique).size()));
-    heuristic_bound = std::min(heuristic_bound, int(graph.dsatur_original(dsatur_original_ordering, neighbors, clique).size()));
-    heuristic_bound = std::min(heuristic_bound, int(graph.max_connected_degree_coloring(max_connected_degree_ordering, neighbors, clique).size()));
+    if(graph.ncount() < 1500 and graph.ecount() < 750000){//run all coloring heuristics for a strong upper bound
+        heuristic_bound = std::min(heuristic_bound, int(graph.dsatur(dsatur_ordering, neighbors, clique).size()));
+        heuristic_bound = std::min(heuristic_bound, int(graph.dsatur_original(dsatur_original_ordering, neighbors, clique).size()));
+        heuristic_bound = std::min(heuristic_bound, int(graph.max_connected_degree_coloring(max_connected_degree_ordering, neighbors, clique).size()));
+    }else{ //run only the heuristic that specifies the vertex ordering, or max connected in lexicographic case
+        switch(opt.vertex_ordering){
+            case Graph::Dsatur:
+                heuristic_bound = std::min(heuristic_bound, int(graph.dsatur(dsatur_ordering, neighbors, clique).size()));
+                break;
+            case Graph::DsaturOriginal:
+                heuristic_bound = std::min(heuristic_bound, int(graph.dsatur_original(dsatur_original_ordering, neighbors, clique).size()));
+                break;
+            case Graph::Lexicographic:
+            case Graph::MinWidth:
+            case Graph::MaxConnectedDegree:
+                heuristic_bound = std::min(heuristic_bound, int(graph.max_connected_degree_coloring(max_connected_degree_ordering, neighbors, clique).size()));
+                break;
+        }
+    }
     upper_bound = heuristic_bound;
     switch(opt.vertex_ordering){
         case Graph::Lexicographic:
@@ -134,6 +150,8 @@ void DDColors::initialise() {
         graph = graph.perm_graph(perm_inverse(graph_ordering));
         neighbors = graph.get_neighbor_list();
     }
+    std::chrono::steady_clock::time_point end_time = std::chrono::steady_clock::now();
+    stats.tt_upper_bound = (end_time - stats.start_time);
     COLORlp_init_env();
 }
 
@@ -160,6 +178,7 @@ int DDColors::run() {
     } else if(opt.algorithm == Options::HeuristicRefinement){
         lower_bound = heuristic_iterative_refinement();
     } else if(opt.algorithm == Options::ExactCompilation){
+        std::cout << "Heuristic bound is " << heuristic_bound  << " computed in " << stats.tt_upper_bound << std::endl;
         DecisionDiagram dd = exact_decision_diagram(graph, neighbors);
         stats.decision_diagram_size = num_nodes(dd);
         stats.decision_diagram_arcs = num_arcs(dd);
@@ -169,7 +188,7 @@ int DDColors::run() {
         lower_bound = int(std::round(ip_flow));
         stats.num_ip_solved = 1;
     }else if(opt.algorithm == Options::ExactFractionalNumber){
-        std::cout << "Heuristic bound is " << heuristic_bound << std::endl;
+        std::cout << "Heuristic bound is " << heuristic_bound  << " computed in " << stats.tt_upper_bound << std::endl;
         DecisionDiagram dd = exact_decision_diagram(graph, neighbors);
         stats.decision_diagram_size = num_nodes(dd);
         stats.decision_diagram_arcs = num_arcs(dd);
@@ -318,7 +337,7 @@ Coloring DDColors::primal_heuristic(DecisionDiagram dd) {
             for(ColorClass &c : coloring){
                 found_non_conflicting_cc = true;
                 for(unsigned int j : c){
-                    if(neighbors[i - 1].count(j)){
+                    if(std::find(neighbors[i - 1].begin(), neighbors[i - 1].end(), j) != neighbors[i - 1].end()){
                         found_non_conflicting_cc = false;
                         break;
                     }
@@ -531,7 +550,7 @@ DDColors::find_conflict_and_primal_heuristic(DecisionDiagram &dd, double flow_va
                 if((not path_found_conflict) and continue_conflict_detection){
                     for(auto j_it = selected_vertices.rbegin(); j_it != selected_vertices.rend(); j_it++){
                         unsigned int j = j_it.operator*();
-                        if(neighbors[i].count(j)){
+                        if(std::find(neighbors[i].begin(), neighbors[i].end(), j) != neighbors[i].end()){
                             conflict_info.emplace_back(
                                     Path(path.begin() + j - 1, path.end()),
                                     Label(label.begin() + j - 1, label.end()),
@@ -631,7 +650,7 @@ DDColors::find_conflict_and_primal_heuristic(DecisionDiagram &dd, double flow_va
             for(ColorClass &c : coloring){
                 found_non_conflicting_cc = true;
                 for(unsigned int j : c){
-                    if(neighbors[i - 1].count(j)){
+                    if(std::find(neighbors[i - 1].begin(), neighbors[i - 1].end(), j) != neighbors[i - 1].end()){
                         found_non_conflicting_cc = false;
                         break;
                     }

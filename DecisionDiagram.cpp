@@ -120,7 +120,8 @@ DecisionDiagram exact_decision_diagram(const Graph &g, const NeighborList &neigh
         map_state_size_to_node_indices.reserve(dd[layer].size() + 5);
         for(Node &u : dd[layer]){
             if(num_nodes > std::pow(10, 6)){
-                throw std::runtime_error("The exact decision diagram contains more than one million nodes.");
+                throw std::runtime_error("The exact decision diagram contains more than one million nodes already "
+                                         "in layer " + std::to_string(layer) + " of " + std::to_string(g.ncount())+".");
             }
 
             if(u.state_info.count(layer + 1)){
@@ -307,7 +308,7 @@ detect_edge_conflict(DecisionDiagram dd, const NeighborList &neighbors, double f
                     for(auto j_it = selected_vertices.rbegin();
                         j_it != selected_vertices.rend(); j_it++){
                         unsigned int j = j_it.operator*();
-                        if(neighbors[i].count(j)){
+                        if(std::find(neighbors[i].begin(), neighbors[i].end(), j) != neighbors[i].end()){
                             conflict_info.emplace_back(
                                     Path(path.begin() + j - 1, path.end()),
                                     Label(label.begin() + j - 1, label.end()),
@@ -703,8 +704,8 @@ PathLabelConflict conflict_on_longest_path(const DecisionDiagram &dd, const Neig
             if(not label[i]){
                 continue;
             }
-            //both vertex i and j of original graph are chosen. check if that is a conflict or not
-            if(neighbors[i].count(j + 1)){
+            //both vertex i and j of original graph are chosen. check if that is a conflict or not, i.e. if they are adj
+            if(std::find(neighbors[i].begin(), neighbors[i].end(), (j + 1)) != neighbors[i].end()){
                 return PathLabelConflict(Path(path.begin() + i, path.begin() + j + 1),
                                          Label(label.begin() + i, label.begin() + j), std::make_tuple(i + 1, j + 1));
             }

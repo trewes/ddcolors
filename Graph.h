@@ -25,7 +25,7 @@ extern "C" {
 
 typedef unsigned int Vertex;
 //type to store for a vertex j the set of neighboring vertices as neighbors[j]
-typedef std::vector<std::set<Vertex> > NeighborList;
+typedef std::vector<std::vector<Vertex> > NeighborList;
 //note that permutations are given as positive integers, there is no i s.t. perm[i] = 0, it's always positive
 typedef std::vector<unsigned int> Permutation;
 typedef unsigned int Color;
@@ -192,6 +192,7 @@ public:
 
     std::set<Vertex> find_clique(int nrbranches = -1) const;
 
+    Coloring dsatur_test(Permutation &ordering, const NeighborList &neighbors);
 };
 
 #endif //DDCOLORS_GRAPH_H
