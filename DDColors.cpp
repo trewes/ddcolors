@@ -91,6 +91,9 @@ void DDColors::initialise() {
     } else if(opt.use_clique_in_ordering){
         clique = graph.find_clique(opt.clique_num_branches);
     }
+    if(clique.size() > 2){
+        std::cout << "Found a clique of size " << clique.size() << std::endl;
+    }
 
     if(opt.ordering_random_tiebreaks){
         graph.use_random_tiebreaks();
