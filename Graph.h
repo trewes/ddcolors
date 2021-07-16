@@ -21,6 +21,7 @@
 
 extern "C" {
 #include "color.h"  //needed for finding a clique, using the COLORclique_ostergard method from exactcolors
+#include "mwis.h"   //needed for stable set heuristic, used on complement graph to find a clique
 }
 
 typedef unsigned int Vertex;
@@ -40,7 +41,7 @@ std::ostream &operator<<(std::ostream &s, const std::vector<T> &vec);
 
 //helper function to chose a random element from a given set of elements
 template<typename T>
-T random_element(std::set<T> const &v);
+T random_element(const std::vector<T> &v);
 
 //returns the identity permutation, i.e. a vector with vec[i] = i+1 of the given size
 Permutation identity(size_t size);
@@ -72,9 +73,13 @@ public:
      * ncount, ecount, elist : return the corresponding data field of the class
      * shifted_elist : a helper function to ease communication with the clique algorithm from exactcolors,
      *                 shifts the vertices to be labeled beginning from 0 instead of 1
+     * complement_shifted_elist : a helper function to ease communication with the stable set heuristic
+     *                            from exactcolors, returns the complements edge list shifted by 1
      * perm_graph : returns the permuted graph for a given permutation
      * use_random_tiebreaks : enables the use of randomness during choices in the coloring heuristics and orderings
      * print : outputs the graph in an adjacency list format
+     * read_* : helper functions to build a graph from the given input source
+     * simplify_graph : removes loops and duplicate edges from the graph
      *
      */
 
@@ -89,6 +94,8 @@ public:
     std::vector<Vertex> elist() const;
 
     std::vector<int> shifted_elist() const;
+
+    std::vector<int> complement_shifted_elist() const;
 
     Graph perm_graph(const Permutation &perm) const;
 
@@ -106,6 +113,8 @@ private:
     void read_dimacs(const char *filename);
     void read_graph6(const char *filename);
     void read_graph6_string(std::string g6_string);
+
+    void simplify_graph();
 
 public:
 
@@ -136,20 +145,20 @@ public:
     enum OrderType {Lexicographic, Dsatur, DsaturOriginal, MaxConnectedDegree, MinWidth};
 
 
-    Coloring dsatur(Permutation &ordering, const std::set<Vertex> &clique = {}) const;
-    Coloring dsatur(Permutation &ordering, const NeighborList &neighbors, const std::set<Vertex> &clique = {}) const;
+    Coloring dsatur(Permutation &ordering, const std::vector<Vertex> &clique = {}) const;
+    Coloring dsatur(Permutation &ordering, const NeighborList &neighbors, const std::vector<Vertex> &clique = {}) const;
 
-    Coloring dsatur_original(Permutation &ordering, const std::set<Vertex> &clique = {}) const;
+    Coloring dsatur_original(Permutation &ordering, const std::vector<Vertex> &clique = {}) const;
     Coloring
-    dsatur_original(Permutation &ordering, const NeighborList &neighbors, const std::set<Vertex> &clique = {}) const;
+    dsatur_original(Permutation &ordering, const NeighborList &neighbors, const std::vector<Vertex> &clique = {}) const;
 
 
-    Coloring max_connected_degree_coloring(Permutation &ordering, const std::set<Vertex> &clique = {}) const;
+    Coloring max_connected_degree_coloring(Permutation &ordering, const std::vector<Vertex> &clique = {}) const;
     Coloring max_connected_degree_coloring(Permutation &ordering, const NeighborList &neighbors,
-                                           const std::set<Vertex> &clique = {}) const;
+                                           const std::vector<Vertex> &clique = {}) const;
 
-    Permutation max_connected_degree_ordering(const std::set<Vertex> &clique = {}) const;
-    Permutation max_connected_degree_ordering(const NeighborList &neighbors, const std::set<Vertex> &clique = {}) const;
+    Permutation max_connected_degree_ordering(const std::vector<Vertex> &clique = {}) const;
+    Permutation max_connected_degree_ordering(const NeighborList &neighbors, const std::vector<Vertex> &clique = {}) const;
 
     int constraint_graph_width();
     Permutation constraint_graph_ordering();
@@ -190,9 +199,8 @@ public:
     void remove_dominated_vertices();
     void remove_dominated_vertices(const NeighborList &neighbors);
 
-    std::set<Vertex> find_clique(int nrbranches = -1) const;
+    std::vector<Vertex> find_clique(int nrbranches = -1) const;
 
-    Coloring dsatur_test(Permutation &ordering, const NeighborList &neighbors);
 };
 
 #endif //DDCOLORS_GRAPH_H

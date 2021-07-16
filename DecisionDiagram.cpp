@@ -93,12 +93,12 @@ DecisionDiagram initial_decision_diagram(const Graph &g) {
     return dd;
 }
 
-DecisionDiagram exact_decision_diagram(const Graph &g) {
+DecisionDiagram exact_decision_diagram(const Graph &g, int size_limit) {
     NeighborList neighbors = g.get_neighbor_list();
-    return exact_decision_diagram(g, neighbors);
+    return exact_decision_diagram(g, neighbors, size_limit);
 }
 
-DecisionDiagram exact_decision_diagram(const Graph &g, const NeighborList &neighbors) {
+DecisionDiagram exact_decision_diagram(const Graph &g, const NeighborList &neighbors, int size_limit) {
     DecisionDiagram dd;
     dd.resize(g.ncount() + 1);
     int num_nodes = 0;
@@ -119,9 +119,10 @@ DecisionDiagram exact_decision_diagram(const Graph &g, const NeighborList &neigh
         dd[layer + 1].reserve(dd[layer].size() + 5);//some estimation for the size of the next layer, reserve some space for the vector
         map_state_size_to_node_indices.reserve(dd[layer].size() + 5);
         for(Node &u : dd[layer]){
-            if(num_nodes > std::pow(10, 6)){
-                throw std::runtime_error("The exact decision diagram contains more than one million nodes already "
-                                         "in layer " + std::to_string(layer) + " of " + std::to_string(g.ncount())+".");
+            if(num_nodes > size_limit*std::pow(10, 6)){
+                throw std::runtime_error("The exact decision diagram contains more than " + std::to_string(size_limit)
+                                        + " million nodes and already has width " + std::to_string(get_width(dd))
+                                        +" after layer "+std::to_string(layer)+" of "+std::to_string(g.ncount())+".");
             }
 
             if(u.state_info.count(layer + 1)){
@@ -514,6 +515,11 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
         COLORlp_addrow(flow_lp, 2, index.data(), val.data(), COLORlp_LESS_EQUAL, var_bound+1, nullptr);
     }
 
+//    std::vector<int> index = {0, 1};
+//    std::vector<double> val = {1.0, 1.0};
+//    COLORlp_addrow(flow_lp, 2, index.data(), val.data(), COLORlp_GREATER_EQUAL, 97, nullptr);
+//    COLORlp_addrow(flow_lp, 2, index.data(), val.data(), COLORlp_LESS_EQUAL, 98, nullptr);//TODO
+
     COLORlp_optimize(flow_lp);
     double flow_val = 0;
     COLORlp_objval(flow_lp, &flow_val);
@@ -532,7 +538,7 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
         unsigned int dd_size = num_nodes(dd);
         // dual solution consists of n variables for the constraints of each layer + the variables for each node except r,t
         // + possibly dual variables for the bound constraints, if those are used
-        dual_solution.reserve(n + dd_size - 2 + num_columns);
+        dual_solution.reserve(n + dd_size - 2 + num_columns);//TODO remove space for constraints
         COLORlp_pi(flow_lp, dual_solution.data());
         dual_solution.assign(dual_solution.data(),
                              dual_solution.data() + n + dd_size - 2);

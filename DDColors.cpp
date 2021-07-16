@@ -92,7 +92,12 @@ void DDColors::initialise() {
         clique = graph.find_clique(opt.clique_num_branches);
     }
     if(clique.size() > 2){
-        std::cout << "Found a clique of size " << clique.size() << std::endl;
+        //sort clique by ascending degree
+        NeighborList tneighbors = graph.get_neighbor_list();
+        std::sort(clique.begin(), clique.end(),
+                  [&tneighbors](Vertex v, Vertex w){return tneighbors[v - 1].size() > tneighbors[w - 1].size();});
+        std::cout << "Found a clique of size " << clique.size() << " in "
+            << (std::chrono::steady_clock::now() - stats.start_time)<< std::endl;
     }
 
     if(opt.ordering_random_tiebreaks){
@@ -104,7 +109,7 @@ void DDColors::initialise() {
     Permutation dsatur_original_ordering;
     Permutation max_connected_degree_ordering;
     neighbors = graph.get_neighbor_list(); //get neighbors once for all three heuristics
-    if(graph.ncount() < 1500 and graph.ecount() < 750000){//run all coloring heuristics for a strong upper bound
+    if((graph.ncount() < 1500 and graph.ecount() < 750000) or opt.algorithm == Options::HeuristicOnly){//run all coloring heuristics for a strong upper bound
         heuristic_bound = std::min(heuristic_bound, int(graph.dsatur(dsatur_ordering, neighbors, clique).size()));
         heuristic_bound = std::min(heuristic_bound, int(graph.dsatur_original(dsatur_original_ordering, neighbors, clique).size()));
         heuristic_bound = std::min(heuristic_bound, int(graph.max_connected_degree_coloring(max_connected_degree_ordering, neighbors, clique).size()));
@@ -179,20 +184,26 @@ int DDColors::run() {
     if(opt.algorithm == Options::BasicRefinement){
         lower_bound = basic_iterative_refinement();
     } else if(opt.algorithm == Options::HeuristicRefinement){
+        COLORlp_set_cores(opt.num_cores);
+        std::cout << "CPX_PARAM_THREADS set to " << opt.num_cores << std::endl;
         lower_bound = heuristic_iterative_refinement();
     } else if(opt.algorithm == Options::ExactCompilation){
         std::cout << "Heuristic bound is " << heuristic_bound  << " computed in " << stats.tt_upper_bound << std::endl;
-        DecisionDiagram dd = exact_decision_diagram(graph, neighbors);
+        DecisionDiagram dd = exact_decision_diagram(graph, neighbors, opt.size_limit);
         stats.decision_diagram_size = num_nodes(dd);
         stats.decision_diagram_arcs = num_arcs(dd);
         stats.decision_diagram_width = get_width(dd);
         COLORset_dbg_lvl(2);
+        COLORlp_set_emphasis(opt.MIP_emphasis);
+        std::cout << "CPX_PARAM_MIPEMPHASIS set to " << opt.MIP_emphasis << std::endl;
+        COLORlp_set_cores(opt.num_cores);
+        std::cout << "CPX_PARAM_THREADS set to " << opt.num_cores << std::endl;
         double ip_flow = compute_flow_solution(dd, IP, heuristic_bound, opt.formulation);
         lower_bound = int(std::round(ip_flow));
         stats.num_ip_solved = 1;
     }else if(opt.algorithm == Options::ExactFractionalNumber){
         std::cout << "Heuristic bound is " << heuristic_bound  << " computed in " << stats.tt_upper_bound << std::endl;
-        DecisionDiagram dd = exact_decision_diagram(graph, neighbors);
+        DecisionDiagram dd = exact_decision_diagram(graph, neighbors, opt.size_limit);
         stats.decision_diagram_size = num_nodes(dd);
         stats.decision_diagram_arcs = num_arcs(dd);
         stats.decision_diagram_width = get_width(dd);
@@ -249,7 +260,7 @@ int DDColors::basic_iterative_refinement() {
         if(model == IP) stats.num_ip_solved++; else stats.num_lp_solved++;
         if(flow_bound > lower_bound){
             update_lower_bound(flow_bound);
-            print_bounds(dd);
+            print_bounds(dd, flow_value);
         }
 
         std::vector<PathLabelConflict> conflict_info =
@@ -421,8 +432,10 @@ int DDColors::heuristic_iterative_refinement() {
         if(model == IP) stats.num_ip_solved++; else stats.num_lp_solved++;
         if(flow_bound > lower_bound){
             update_lower_bound(flow_bound);
-            print_bounds(dd);
+            print_bounds(dd, flow_value);
             if(lower_bound == upper_bound) break;
+        }else if(opt.verbosity_frequency and ((num_iterations + 1) % opt.verbosity_frequency == 0)){
+            print_bounds(dd, flow_value);
         }
 
         int coloring_size;
@@ -432,7 +445,7 @@ int DDColors::heuristic_iterative_refinement() {
             coloring_size = int(primal_heuristic(dd).size());
             if(coloring_size < upper_bound){
                 update_upper_bound(coloring_size);
-                print_bounds(dd);
+                print_bounds(dd, flow_value);
                 if(lower_bound == upper_bound) break;
             }
             conflict_info = detect_edge_conflict(dd, neighbors, flow_value, model, opt.find_conflicts,
@@ -442,7 +455,7 @@ int DDColors::heuristic_iterative_refinement() {
             std::tie(conflict_info, coloring_size) = find_conflict_and_primal_heuristic(dd, flow_value, model);
             if(coloring_size < upper_bound){
                 update_upper_bound(coloring_size);
-                print_bounds(dd);
+                print_bounds(dd, flow_value);
                 if(lower_bound == upper_bound) break;
             }
         }
@@ -488,14 +501,16 @@ void DDColors::update_upper_bound(int coloring_size) {
     stats.tt_upper_bound = (time_to_bound - stats.start_time);
 }
 
-void DDColors::print_bounds(const DecisionDiagram& dd) const {
+void DDColors::print_bounds(const DecisionDiagram &dd, double obj_value) const {
     if(opt.algorithm == Options::BasicRefinement){
         std::cout << "bounds: lower " << lower_bound << " time: tt_lb " << stats.tt_lower_bound;
     } else if(opt.algorithm == Options::HeuristicRefinement){
         std::cout << "bounds: lower " << lower_bound << (coloring_bound < heuristic_bound ? " upper  " : " upper* ")
                   << upper_bound << " time: tt_lb " << stats.tt_lower_bound << " tt_ub " << stats.tt_upper_bound;
     }
-    std::cout << " DDsize: nodes " << num_nodes(dd) << " arcs " << num_arcs(dd) << " width " << get_width(dd) << std::endl;
+    std::cout << " DDsize: nodes " << num_nodes(dd) << " arcs " << num_arcs(dd) << " width " << get_width(dd);
+    std::cout << " Solved: IP " << stats.num_ip_solved << " LP " << stats.num_lp_solved
+    << " obj " << std::setprecision(10) << obj_value << std::endl;
 }
 
 
@@ -707,7 +722,7 @@ void DDColors::preprocessing_graph(int nbranches) {
         //dominated vertices are not part of a clique, can remove this before searching for one
         graph.remove_dominated_vertices();
         //look for clique to get lower bound on chromatic number
-        std::set<Vertex> tclique = graph.find_clique(nbranches);
+        std::vector<Vertex> tclique = graph.find_clique(nbranches);
         clique_size = std::max(clique_size, int(tclique.size()));
         graph.peel_graph(clique_size);
 

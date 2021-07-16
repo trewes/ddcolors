@@ -89,8 +89,8 @@ struct Node{
  *
  * initial_decision_diagram : builds the initial diagram with a single node in each layer and the 1-arc and 0-arc
  *                            both going into the next node. Has n+1 layers and nodes where n = |V(G)|
- * exact_decision_diagram : builds the exact decision diagram using top-down compilation and checking for equivalence
- *                          of nodes using the state information. Terminates if more than one million nodes are required
+ * exact_decision_diagram : builds the exact decision diagram via top-down compilation and checks for equivalent nodes
+ *                          using the state information. Terminates if more than size_limit million nodes are required
  */
 
 typedef std::vector<std::vector<Node> > DecisionDiagram;
@@ -104,8 +104,8 @@ void print_decision_diagram(const DecisionDiagram &dd, bool use_tag = false);
 
 DecisionDiagram initial_decision_diagram(const Graph &g);
 
-DecisionDiagram exact_decision_diagram(const Graph &g);
-DecisionDiagram exact_decision_diagram(const Graph &g, const NeighborList &neighbors);
+DecisionDiagram exact_decision_diagram(const Graph &g, int size_limit = 1);
+DecisionDiagram exact_decision_diagram(const Graph &g, const NeighborList &neighbors, int size_limit = 1);
 
 /*
  * PathLabelConflict

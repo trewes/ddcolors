@@ -37,6 +37,8 @@ void print_help(){
     std::cout<<"                         b for adding the variable bounds as constraints, c for using obtained coloring bound as upper bound on vars and r to let 0-arcs always be continuous"<<std::endl;
     std::cout<<"-k|--clique             :Looks for a clique whose vertices are fixed as the first ones in the ordering and in the upper bound heuristic."<<std::endl;
     std::cout<<"-z|--randomness         :Enables random tie breaks in the coloring heuristic."<<std::endl;
+    std::cout<<"-v|--verbosity arg      :Prints information every xth iteration of the refinement procedure, not only when bounds change (x must be a postive integer)."<<std::endl;
+    std::cout<<"-s|--size_limit arg     :Limits the size of the decision diagram to x million nodes in exact compilation (x must be a postive integer)."<<std::endl;
 }
 
 #define MAX_PNAME_LEN 128
@@ -66,13 +68,13 @@ void program_header(int ac, char **av) {
 
     printf("Date     : %s", ctime(&starttime));
 
-    printf("Changeset: %s\n", color_verion_string);
+//    printf("Changeset: %s\n", color_verion_string);
     fflush (stdout);
     printf("##############################################################\n");
 }
 
 int main(int argc, char *argv[]) {
-
+//TODO -v verbosity
     if(argc == 1){//no arguments were given
         print_help();
         return 0;
@@ -94,11 +96,19 @@ int main(int argc, char *argv[]) {
             {"formulation",     required_argument, nullptr, 'f'},
             {"clique",          optional_argument, nullptr, 'k'},
             {"randomness",      no_argument,       nullptr, 'z'},
+            {"verbosity",       required_argument, nullptr, 'v'},
+            {"size_limit",      required_argument, nullptr, 's'},
     };
     Options dd_settings{};
-    while((opt = getopt_long(argc, argv, "hap::k::zc:o:r:l:m:d:f:", long_options, &option_index)) != -1){
+    while((opt = getopt_long(argc, argv, "hap::k::zc:o:r:l:m:d:f:v:s:e:t:", long_options, &option_index)) != -1){
         switch(opt){
 
+            case 'e':
+                dd_settings.MIP_emphasis = std::stoi(optarg, nullptr, 10);//TODO remove
+                break;
+            case 't'://TODO experiment with this.. And parallel mode for iterative refinement?check for some hard instances..
+                dd_settings.num_cores = std::stoi(optarg, nullptr, 10);//TODO remove
+                break;
             default:
             case '?':                                                       //getopt itself will return an error message
                 return -1;
@@ -138,7 +148,7 @@ int main(int argc, char *argv[]) {
                         oa.erase(oa.begin());
                         dd_settings.largest_conflicts_limit = std::stoi(oa, nullptr, 10);
                         if(not (1 <= dd_settings.largest_conflicts_limit and dd_settings.largest_conflicts_limit <= 7)){
-                            std::cout << "The minimum flow for selecting the conflicts not between 0.1 and 1e^-7." << std::endl;
+                            std::cout << "The minimum flow for selecting the conflicts is not between 0.1 and 1e^-7." << std::endl;
                             std::cout << "Program failed." << std::endl;
                             return -1;
                         }
@@ -178,6 +188,11 @@ int main(int argc, char *argv[]) {
                     if( oa != "m" ){
                         oa.erase(oa.begin());
                         dd_settings.ip_frequency = std::stoi(oa, nullptr, 10);
+                        if(dd_settings.ip_frequency <= 0){
+                            std::cout << "The integer program frequency must be a positive number." << std::endl;
+                            std::cout << "Program failed." << std::endl;
+                            return -1;
+                        }
                     }
                 }else{
                     std::cout << "The IP relaxation method was not correctly specified." << std::endl;
@@ -187,6 +202,11 @@ int main(int argc, char *argv[]) {
                 break;
             case 'l':
                 dd_settings.num_longest_path_iterations = std::stoi(optarg, nullptr, 10);
+                if(dd_settings.num_longest_path_iterations <= 0){
+                    std::cout << "The number of longest path refinement iterations must not be a negative number." << std::endl;
+                    std::cout << "Program failed." << std::endl;
+                    return -1;
+                }
                 break;
             case 'p':
                 dd_settings.preprocess_graph = true;
@@ -234,6 +254,25 @@ int main(int argc, char *argv[]) {
                 break;
             case 'z':
                 dd_settings.ordering_random_tiebreaks = true;
+                break;
+            case 'v':
+                dd_settings.verbosity_frequency = std::stoi(optarg, nullptr, 10);
+                if(dd_settings.verbosity_frequency <= 0){
+                    std::cout << "The program output frequency must be a positive number." << std::endl;
+                    std::cout << "Program failed." << std::endl;
+                    return -1;
+                }
+                break;
+            case 's':
+                dd_settings.size_limit = std::stoi(optarg, nullptr, 10);
+                if(dd_settings.size_limit <= 0){
+                    std::cout << "The size limit of nodes in million must be a positive number." << std::endl;
+                    std::cout << "Program failed." << std::endl;
+                    return -1;
+                }else if(5 < dd_settings.size_limit){
+                    std::cout << "Allowing more than  million nodes in the exact decision diagram, "
+                                 "be sure that is what you want." << std::endl;
+                }
                 break;
         }
     }

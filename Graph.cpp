@@ -24,7 +24,7 @@ std::ostream &operator<<(std::ostream &s, const std::vector<T> &vec) {
 }
 
 template<typename T>
-T random_element(std::set<T> const &v) {
+T random_element(const std::vector<T> &v) {
     auto it = v.cbegin();
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -96,6 +96,33 @@ std::vector<int> Graph::shifted_elist() const {
     return shifted_edge_list;
 }
 
+std::vector<int> Graph::complement_shifted_elist() const {
+    NeighborList neighbors = get_neighbor_list();
+    int complement_ecount = int((_ncount * (_ncount - 1))) / 2 - int(_ecount);
+    std::vector<int> complement_edge_list(2 * complement_ecount);
+    int cecount = 0;
+    for(int v = 0; v < _ncount; v++){
+        int a = -1;
+        int a_i  = 0;
+        for (int na = v + 1; na < _ncount; ++ na) {
+            while (a_i < neighbors[v].size() && a < na) {
+                a = neighbors[v][a_i] - 1;
+                ++a_i;
+            }
+            if (na != a) {
+                complement_edge_list[2*cecount]   = v;
+                complement_edge_list[2*cecount+1] = na;
+                ++cecount;
+            }
+        }
+    }
+    if(cecount != complement_ecount){
+        throw std::runtime_error("Did not produce the right amount of complement edges.");
+    }
+    return complement_edge_list;
+}
+
+
 
 Graph::Graph(const char *filename) : _ncount(0), _ecount(0) {
     std::string string_name = filename;
@@ -108,6 +135,7 @@ Graph::Graph(const char *filename) : _ncount(0), _ecount(0) {
     } else{
         throw std::runtime_error("File format is not accepted.");
     }
+    simplify_graph();
 }
 
 Graph::Graph(std::string g6_string) : _ncount(0), _ecount(0) {
@@ -247,6 +275,41 @@ void Graph::read_graph6_string(std::string g6_string) {// Extract vertex count f
 }
 
 
+void Graph::simplify_graph(){
+
+    NeighborList neighbors = get_neighbor_list();
+    std::vector<Vertex> simplified_elist;
+    simplified_elist.reserve(2*_ecount);
+    int simplified_ecount = 0;
+    for(Vertex v = 1; v <= _ncount; v++){
+        if(neighbors[v-1].empty())
+            continue;
+        Vertex w;
+        //add first edge if it is not a loop and and edge from smaller to larger vertex
+        if(v < neighbors[v - 1][0]){
+            simplified_elist.push_back(v);
+            simplified_elist.push_back(neighbors[v - 1][0]);
+            simplified_ecount++;
+        }
+        for(unsigned int j = 1; j < neighbors[v-1].size(); j++ ){
+            //test for loops or duplicate edges, uses that the adjacency lists from get_neighbor_list are sorted
+            //only add edge from smalle to larger vertex, also skip otherwise
+            if( (v < neighbors[v - 1][j] ) and (neighbors[v - 1][j - 1] != neighbors[v - 1][j]) ){
+                simplified_elist.push_back(v);
+                simplified_elist.push_back(neighbors[v - 1][j]);
+                simplified_ecount++;
+            }
+        }
+    }
+    if(simplified_ecount != (simplified_elist.size() / 2)){
+        throw std::runtime_error("Did not simplify the graph correctly.");
+    }
+    _elist = simplified_elist;
+    _elist.shrink_to_fit();
+    _ecount = simplified_ecount;
+}
+
+
 Graph Graph::perm_graph(const Permutation &perm) const {
     if(perm.size() != _ncount){
         throw std::runtime_error("Size of graph and permutation do not match.");
@@ -259,12 +322,12 @@ Graph Graph::perm_graph(const Permutation &perm) const {
     return permuted_graph;
 }
 
-Coloring Graph::dsatur(Permutation &ordering, const std::set<Vertex> &clique) const {
+Coloring Graph::dsatur(Permutation &ordering, const std::vector<Vertex> &clique) const {
     NeighborList neighbors = get_neighbor_list();
     return dsatur(ordering, neighbors, clique);
 }
 
-Coloring Graph::dsatur(Permutation &ordering, const NeighborList &neighbors, const std::set<Vertex> &clique) const {
+Coloring Graph::dsatur(Permutation &ordering, const NeighborList &neighbors, const std::vector<Vertex> &clique) const {
     ordering.clear();
     ordering.reserve(_ncount);
     Coloring coloring;
@@ -297,7 +360,7 @@ Coloring Graph::dsatur(Permutation &ordering, const NeighborList &neighbors, con
         Vertex max_saturated_vertex = 0;
         int max_saturated = -1;
         //keep set of tied vertices to later choose one at random
-        std::set<Vertex> saturated_tied_max_degrees;
+        std::vector<Vertex> saturated_tied_max_degrees;
         for(Vertex vertex = 1; vertex <= _ncount; vertex++){
             if(vertex_color[vertex - 1] != -1)
                 continue;
@@ -308,17 +371,17 @@ Coloring Graph::dsatur(Permutation &ordering, const NeighborList &neighbors, con
                 max_saturated_vertex = vertex;
 
                 saturated_tied_max_degrees.clear();
-                saturated_tied_max_degrees.insert(vertex);
+                saturated_tied_max_degrees.push_back(vertex);
             } else if(saturation_level[vertex - 1] == max_saturated){
                 if(neighbors[vertex - 1].size() > neighbors[max_saturated_vertex - 1].size()){
                     //found vertex with equal saturation but higher degree, update
                     max_saturated_vertex = vertex;
 
                     saturated_tied_max_degrees.clear();
-                    saturated_tied_max_degrees.insert(vertex);
+                    saturated_tied_max_degrees.push_back(vertex);
                 } else if(neighbors[vertex - 1].size() == neighbors[max_saturated_vertex - 1].size()){
                     //same saturation level, same degree, add to set of possible candidates
-                    saturated_tied_max_degrees.insert(vertex);
+                    saturated_tied_max_degrees.push_back(vertex);
                 }
             }
         }
@@ -385,14 +448,14 @@ Coloring Graph::dsatur(Permutation &ordering, const NeighborList &neighbors, con
 }
 
 
-Coloring Graph::dsatur_original(Permutation &ordering, const std::set<Vertex> &clique) const {
+Coloring Graph::dsatur_original(Permutation &ordering, const std::vector<Vertex> &clique) const {
     NeighborList neighbors = get_neighbor_list();
     return dsatur_original(ordering, neighbors, clique);
 }
 
 
 Coloring
-Graph::dsatur_original(Permutation &ordering, const NeighborList &neighbors, const std::set<Vertex> &clique) const {
+Graph::dsatur_original(Permutation &ordering, const NeighborList &neighbors, const std::vector<Vertex> &clique) const {
     ordering.clear();
     ordering.reserve(_ncount);
     Coloring coloring;
@@ -432,7 +495,7 @@ Graph::dsatur_original(Permutation &ordering, const NeighborList &neighbors, con
         Vertex max_saturated_vertex = 0;
         int max_saturated = -1;
         //keep set of tied vertices to later choose one at random
-        std::set<Vertex> saturated_tied_max_degrees;
+        std::vector<Vertex> saturated_tied_max_degrees;
         for(Vertex vertex = 1; vertex <= _ncount; vertex++){
             if(vertex_color[vertex - 1] != -1)
                 continue;
@@ -442,17 +505,17 @@ Graph::dsatur_original(Permutation &ordering, const NeighborList &neighbors, con
                 max_saturated_vertex = vertex;
 
                 saturated_tied_max_degrees.clear();
-                saturated_tied_max_degrees.insert(vertex);
+                saturated_tied_max_degrees.push_back(vertex);
             } else if(saturation_level[vertex - 1] == max_saturated){
                 if(uncolored_subgraph_degree[vertex - 1] > uncolored_subgraph_degree[max_saturated_vertex - 1]){
                     //found vertex with equal saturation but higher degree, update
                     max_saturated_vertex = vertex;
 
                     saturated_tied_max_degrees.clear();
-                    saturated_tied_max_degrees.insert(vertex);
+                    saturated_tied_max_degrees.push_back(vertex);
                 } else if(neighbors[vertex - 1].size() == neighbors[max_saturated_vertex - 1].size()){
                     //same saturation level, same degree, add to set of possible candidates
-                    saturated_tied_max_degrees.insert(vertex);
+                    saturated_tied_max_degrees.push_back(vertex);
                 }
             }
         }
@@ -522,13 +585,13 @@ Graph::dsatur_original(Permutation &ordering, const NeighborList &neighbors, con
 }
 
 
-Coloring Graph::max_connected_degree_coloring(Permutation &ordering, const std::set<Vertex> &clique) const {
+Coloring Graph::max_connected_degree_coloring(Permutation &ordering, const std::vector<Vertex> &clique) const {
     NeighborList neighbors = get_neighbor_list();
     return max_connected_degree_coloring(ordering, neighbors, clique);
 }
 
 Coloring Graph::max_connected_degree_coloring(Permutation &ordering, const NeighborList &neighbors,
-                                              const std::set<Vertex> &clique) const {
+                                              const std::vector<Vertex> &clique) const {
     ordering.clear();
     ordering.reserve(_ncount);
     Coloring coloring;
@@ -562,7 +625,7 @@ Coloring Graph::max_connected_degree_coloring(Permutation &ordering, const Neigh
         Vertex max_saturated_vertex = 0;
         int max_saturated = -1;
         //keep set of tied vertices to later choose one at random
-        std::set<Vertex> saturated_tied_max_degrees;
+        std::vector<Vertex> saturated_tied_max_degrees;
         for(Vertex vertex = 1; vertex <= _ncount; vertex++){
             if(vertex_color[vertex - 1] != -1)
                 continue;
@@ -573,17 +636,17 @@ Coloring Graph::max_connected_degree_coloring(Permutation &ordering, const Neigh
                 max_saturated_vertex = vertex;
 
                 saturated_tied_max_degrees.clear();
-                saturated_tied_max_degrees.insert(vertex);
+                saturated_tied_max_degrees.push_back(vertex);
             } else if(num_selected_neighbors[vertex - 1] == max_saturated){
                 if(neighbors[vertex - 1].size() > neighbors[max_saturated_vertex - 1].size()){
                     //found vertex with equal saturation but higher degree, update
                     max_saturated_vertex = vertex;
 
                     saturated_tied_max_degrees.clear();
-                    saturated_tied_max_degrees.insert(vertex);
+                    saturated_tied_max_degrees.push_back(vertex);
                 } else if(neighbors[vertex - 1].size() == neighbors[max_saturated_vertex - 1].size()){
                     //same saturation level, same degree, add to set of possible candidates
-                    saturated_tied_max_degrees.insert(vertex);
+                    saturated_tied_max_degrees.push_back(vertex);
                 }
             }
         }
@@ -638,13 +701,13 @@ Coloring Graph::max_connected_degree_coloring(Permutation &ordering, const Neigh
 }
 
 
-Permutation Graph::max_connected_degree_ordering(const std::set<Vertex> &clique) const {
+Permutation Graph::max_connected_degree_ordering(const std::vector<Vertex> &clique) const {
     NeighborList neighbors = get_neighbor_list();
     return max_connected_degree_ordering(neighbors, clique);
 }
 
 
-Permutation Graph::max_connected_degree_ordering(const NeighborList &neighbors, const std::set<Vertex> &clique) const {
+Permutation Graph::max_connected_degree_ordering(const NeighborList &neighbors, const std::vector<Vertex> &clique) const {
     Permutation ordering;
     ordering.reserve(_ncount);
     //record for an unselected vertex to how many selected vertices it is connected
@@ -890,26 +953,44 @@ void Graph::remove_dominated_vertices(const NeighborList &neighbors) {
 }
 
 
-std::set<Vertex> Graph::find_clique(int nrbranches) const {
-    if(nrbranches == 0){
-        return {};
+std::vector<Vertex> Graph::find_clique(int nrbranches) const {
+
+    //dense graph, or force using heuristic; or force using ostergard
+    if( ( nrbranches <= 0) and ((nrbranches == -1) or ((_ncount * (_ncount - 1) / 2.0) / _ecount > 0.3) ) ){
+        MWISls_env* env = (MWISls_env*) NULL;
+        COLORset *cliques = (COLORset *) NULL;
+        int ncliques = 0;
+        std::vector<int> one_weights(_ncount, 1);
+        int rval = COLORstable_LS(&env, &cliques, &ncliques, int(_ncount), (int((_ncount * (_ncount - 1))) / 2 - int(_ecount)),
+                                  complement_shifted_elist().data(), one_weights.data(), COLORNWT_MIN);
+        if(rval or not ncliques){
+            std::cout << "Failed in COLORstable_LS." << std::endl;
+            return {};
+        }
+        std::vector<Vertex> clique;
+        std::transform(cliques[ncliques - 1].members, cliques[ncliques - 1].members + cliques[ncliques - 1].count, std::inserter(clique, clique.end()),
+                       [](int v) { return (Vertex) v + 1; });
+        return clique;
+    }else{
+        //find size of some (optimally maximal) clique
+        COLORset *cliques = (COLORset *) NULL;
+        int ncliques = 0;
+        int pval = 0;
+        if(nrbranches == 0)
+            nrbranches = std::max(int(_ncount) / 10 + 10, 100);
+        std::vector<int> one_weights(_ncount, 1);
+        int rval = COLORclique_ostergard(&cliques, &ncliques, int(_ncount), int(_ecount),
+                                         shifted_elist().data(), one_weights.data(), COLOR_MAXINT, &pval, nrbranches);
+        if(rval or not ncliques) {
+            std::cout << "Failed in COLORclique_ostergard." << std::endl;
+            return {};
+        }
+        std::vector<Vertex> clique;
+        std::transform(cliques[0].members, cliques[0].members + cliques[0].count, std::inserter(clique, clique.end()),
+                       [](int v) { return (Vertex) v + 1; });
+        return clique;
     }
-
-    //find size of some (optimally maximal) clique
-    COLORset *cliques = (COLORset *) NULL;
-    int ncliques = 0;
-    int pval = 0;
-    if(nrbranches == -1)
-        nrbranches = std::max(int(ncount()) / 10 + 10, 100);
-    std::vector<int> one_weights(ncount(), 1);
-    int rval = COLORclique_ostergard(&cliques, &ncliques, int(ncount()), int(ecount()), shifted_elist().data(),
-                                     one_weights.data(), COLOR_MAXINT, &pval, nrbranches);
-    if(rval) std::cout << "Failed in COLORclique_ostergard." << std::endl;
-
-    std::set<Vertex> clique;
-    std::transform(cliques[0].members, cliques[0].members + cliques[0].count, std::inserter(clique, clique.end()),
-                   [](int v) { return (Vertex) v + 1; });
-    return clique;
+    return {};
 }
 
 

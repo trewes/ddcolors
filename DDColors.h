@@ -111,6 +111,11 @@ struct Options{
     bool ordering_random_tiebreaks = false;
     bool use_clique_in_ordering = false;
     int clique_num_branches = -1;
+    int verbosity_frequency = 0;
+    int size_limit = 1;//in million nodes
+
+    int MIP_emphasis = 0;//TODO remove
+    int num_cores = 1;//TODO remove
 };
 
 /*
@@ -164,7 +169,7 @@ private:
     int heuristic_bound = std::numeric_limits<int>::max();
     int coloring_bound = std::numeric_limits<int>::max();
     double fractional_chromatic = 0;
-    std::set<Vertex> clique = {};
+    std::vector<Vertex> clique = {};
 
     /*
      * Several methods implementing the various algorithms and subroutines thereof to compute the chromatic number
@@ -213,7 +218,7 @@ private:
 
     void update_upper_bound(int coloring_size);
 
-    void print_bounds(const DecisionDiagram& dd) const;
+    void print_bounds(const DecisionDiagram &dd, double obj_value) const;
 
 };
 
