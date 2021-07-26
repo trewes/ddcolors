@@ -39,6 +39,10 @@ void print_help(){
     std::cout<<"-z|--randomness         :Enables random tie breaks in the coloring heuristic."<<std::endl;
     std::cout<<"-v|--verbosity arg      :Prints information every xth iteration of the refinement procedure, not only when bounds change (x must be a postive integer)."<<std::endl;
     std::cout<<"-s|--size_limit arg     :Limits the size of the decision diagram to x million nodes in exact compilation (x must be a postive integer)."<<std::endl;
+#ifdef EXTENDED_EXACTCOLORS
+    std::cout<<"-e|--emphasis arg       :Changes the emphasis of CPLEX for the MIP on the exact decision diagram."<<std::endl;
+    std::cout<<"-t|--threads arg        :Changes the number of allowed threads for CPLEX to use. If larger than 1, solving will be opportunistic."<<std::endl;
+#endif
 }
 
 #define MAX_PNAME_LEN 128
@@ -74,7 +78,7 @@ void program_header(int ac, char **av) {
 }
 
 int main(int argc, char *argv[]) {
-//TODO -v verbosity
+
     if(argc == 1){//no arguments were given
         print_help();
         return 0;
@@ -98,17 +102,19 @@ int main(int argc, char *argv[]) {
             {"randomness",      no_argument,       nullptr, 'z'},
             {"verbosity",       required_argument, nullptr, 'v'},
             {"size_limit",      required_argument, nullptr, 's'},
+#ifdef EXTENDED_EXACTCOLORS
+            {"emphasis",       required_argument, nullptr, 'e'},
+            {"threads",      required_argument, nullptr, 't'},
+#endif
     };
     Options dd_settings{};
-    while((opt = getopt_long(argc, argv, "hap::k::zc:o:r:l:m:d:f:v:s:e:t:", long_options, &option_index)) != -1){
+    std::string short_opt = "hap::k::zc:o:r:l:m:d:f:v:s:";
+#ifdef EXTENDED_EXACTCOLORS
+    short_opt += "e:t:";
+#endif
+    while((opt = getopt_long(argc, argv, short_opt.c_str(), long_options, &option_index)) != -1){
         switch(opt){
 
-            case 'e':
-                dd_settings.MIP_emphasis = std::stoi(optarg, nullptr, 10);//TODO remove
-                break;
-            case 't'://TODO experiment with this.. And parallel mode for iterative refinement?check for some hard instances..
-                dd_settings.num_cores = std::stoi(optarg, nullptr, 10);//TODO remove
-                break;
             default:
             case '?':                                                       //getopt itself will return an error message
                 return -1;
@@ -202,7 +208,7 @@ int main(int argc, char *argv[]) {
                 break;
             case 'l':
                 dd_settings.num_longest_path_iterations = std::stoi(optarg, nullptr, 10);
-                if(dd_settings.num_longest_path_iterations <= 0){
+                if(dd_settings.num_longest_path_iterations < 0){
                     std::cout << "The number of longest path refinement iterations must not be a negative number." << std::endl;
                     std::cout << "Program failed." << std::endl;
                     return -1;
@@ -270,10 +276,24 @@ int main(int argc, char *argv[]) {
                     std::cout << "Program failed." << std::endl;
                     return -1;
                 }else if(5 < dd_settings.size_limit){
-                    std::cout << "Allowing more than  million nodes in the exact decision diagram, "
-                                 "be sure that is what you want." << std::endl;
+                    std::cout << "Allowing " << dd_settings.size_limit <<
+                        " million nodes in the exact decision diagram, be sure that is what you want." << std::endl;
                 }
                 break;
+
+#ifdef EXTENDED_EXACTCOLORS
+            case 'e':
+                dd_settings.MIP_emphasis = std::stoi(optarg, nullptr, 10);
+                if(dd_settings.MIP_emphasis < 0 or 4 < dd_settings.MIP_emphasis){
+                    std::cout << "CPLEX solving emphasis must be between 0 and 4." << std::endl;
+                    std::cout << "Program failed." << std::endl;
+                    return -1;
+                }
+                break;
+            case 't':
+                dd_settings.num_cores = std::stoi(optarg, nullptr, 10);
+                break;
+#endif
         }
     }
 

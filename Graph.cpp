@@ -937,15 +937,27 @@ void Graph::remove_dominated_vertices(const NeighborList &neighbors) {
     std::set<Vertex> dominated_vertices;
     for(Vertex v = 1; v <= _ncount; v++){
         for(Vertex w = v + 1; w <= _ncount; w++){
+            //vertices are not neighbors
             if(std::find(neighbors[v - 1].begin(), neighbors[v - 1].end(), w) != neighbors[v - 1].end())
                 continue;
-            if(std::includes(neighbors[v - 1].begin(), neighbors[v - 1].end(),
-                             neighbors[w - 1].begin(), neighbors[w - 1].end())){
-                dominated_vertices.insert(dominated_vertices.end(), w);
-            } else if(std::includes(neighbors[w - 1].begin(), neighbors[w - 1].end(),
-                                    neighbors[v - 1].begin(), neighbors[v - 1].end())){
+            //vertices have not been marked as dominated
+            if(dominated_vertices.count(v) or dominated_vertices.count(w)){
+                continue;
+            }
+
+            std::vector<Vertex> intersection;
+            intersection.reserve(std::min(neighbors[v - 1].size(), neighbors[w - 1].size()));
+            std::set_intersection(neighbors[v - 1].begin(), neighbors[v - 1].end(),
+                                  neighbors[w - 1].begin(), neighbors[w - 1].end(),
+                    std::back_inserter(intersection));
+            if(intersection == neighbors[v - 1]){
+                //neighbors of v included in neighbors of w
                 dominated_vertices.insert(dominated_vertices.end(), v);
-                break;
+                break;//v has been marked as vertex to be removed
+            }
+            else if(intersection == neighbors[w - 1]){
+                //neighbors of w included in neighbors of v
+                dominated_vertices.insert(dominated_vertices.end(), w);
             }
         }
     }

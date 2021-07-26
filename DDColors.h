@@ -113,9 +113,10 @@ struct Options{
     int clique_num_branches = -1;
     int verbosity_frequency = 0;
     int size_limit = 1;//in million nodes
-
-    int MIP_emphasis = 0;//TODO remove
-    int num_cores = 1;//TODO remove
+#ifdef EXTENDED_EXACTCOLORS
+    int MIP_emphasis = 0;
+    int num_cores = 1;
+#endif
 };
 
 /*

@@ -88,6 +88,9 @@ void DDColors::initialise() {
 
     if(opt.preprocess_graph){
         preprocessing_graph(opt.clique_num_branches);
+        if(lower_bound > 0){
+            return;
+        }
     } else if(opt.use_clique_in_ordering){
         clique = graph.find_clique(opt.clique_num_branches);
     }
@@ -171,6 +174,12 @@ DDColors::~DDColors() {
 
 
 int DDColors::run() {
+    if(lower_bound > 0){
+        std::cout << "Graph was already solved in the preprocessing step." << std::endl;
+        std::cout << "Execution took: ";
+        Statistics::pretty_time(stats.execution_time);
+        return lower_bound;
+    }
     if(opt.algorithm == Options::HeuristicOnly){
         std::chrono::steady_clock::time_point end_time = std::chrono::steady_clock::now();
         stats.execution_time = (end_time - stats.start_time);
@@ -184,8 +193,10 @@ int DDColors::run() {
     if(opt.algorithm == Options::BasicRefinement){
         lower_bound = basic_iterative_refinement();
     } else if(opt.algorithm == Options::HeuristicRefinement){
+#ifdef EXTENDED_EXACTCOLORS
         COLORlp_set_cores(opt.num_cores);
         std::cout << "CPX_PARAM_THREADS set to " << opt.num_cores << std::endl;
+#endif
         lower_bound = heuristic_iterative_refinement();
     } else if(opt.algorithm == Options::ExactCompilation){
         std::cout << "Heuristic bound is " << heuristic_bound  << " computed in " << stats.tt_upper_bound << std::endl;
@@ -194,10 +205,12 @@ int DDColors::run() {
         stats.decision_diagram_arcs = num_arcs(dd);
         stats.decision_diagram_width = get_width(dd);
         COLORset_dbg_lvl(2);
+#ifdef EXTENDED_EXACTCOLORS
         COLORlp_set_emphasis(opt.MIP_emphasis);
         std::cout << "CPX_PARAM_MIPEMPHASIS set to " << opt.MIP_emphasis << std::endl;
         COLORlp_set_cores(opt.num_cores);
         std::cout << "CPX_PARAM_THREADS set to " << opt.num_cores << std::endl;
+#endif
         double ip_flow = compute_flow_solution(dd, IP, heuristic_bound, opt.formulation);
         lower_bound = int(std::round(ip_flow));
         stats.num_ip_solved = 1;
@@ -227,7 +240,8 @@ int DDColors::run() {
 
 void DDColors::longest_path_refinement(DecisionDiagram &dd) {
     stats.num_longest_path_conflicts = opt.num_longest_path_iterations;
-    for(int longest_path_iteration = 0;
+    int longest_path_iteration;
+    for(longest_path_iteration = 0;
         longest_path_iteration < opt.num_longest_path_iterations; longest_path_iteration++){
         PathLabelConflict plc = conflict_on_longest_path(dd, neighbors);
         if(plc.path.empty()){
@@ -239,7 +253,8 @@ void DDColors::longest_path_refinement(DecisionDiagram &dd) {
 
     }
     if(opt.num_longest_path_iterations){
-        std::cout << "Finished longest path procedure, begin iterative refinement" << std::endl;
+        std::cout << "Finished longest path procedure after " << longest_path_iteration
+                  << " iterations, begin iterative refinement" << std::endl;
     }
 }
 
@@ -422,7 +437,7 @@ int DDColors::heuristic_iterative_refinement() {
     bool temporarily_switched_to_IP = false;
     while(lower_bound < upper_bound){
 
-        if(opt.relaxation == Options::Mixed and ( (num_iterations+1) % opt.ip_frequency == 0)){//time to solve IP once
+        if(model != IP and opt.relaxation == Options::Mixed and ( (num_iterations+1) % opt.ip_frequency == 0)){//solve IP once
             model = IP;
             temporarily_switched_to_IP = true;
         }
@@ -721,14 +736,22 @@ void DDColors::preprocessing_graph(int nbranches) {
 
         //dominated vertices are not part of a clique, can remove this before searching for one
         graph.remove_dominated_vertices();
+        if(graph.ncount() == 0 or graph.ncount() <= clique_size){
+            //can return with clique size/lower bound
+            //this already solves the graph
+            lower_bound = clique_size;
+            break;
+        }
+
         //look for clique to get lower bound on chromatic number
         std::vector<Vertex> tclique = graph.find_clique(nbranches);
         clique_size = std::max(clique_size, int(tclique.size()));
         graph.peel_graph(clique_size);
 
-        if(graph.ncount() == 0 or clique_size == heuristic_bound){
+        if(graph.ncount() == 0 or graph.ncount() <= clique_size or clique_size == heuristic_bound){
             //can return with clique size/lower bound
             //this already solves the graph
+            lower_bound = clique_size;
             break;
         }
 
@@ -739,7 +762,10 @@ void DDColors::preprocessing_graph(int nbranches) {
             break;
         }
     }
-    std::cout << "simplified graph: " << graph.ncount() << ", " << graph.ecount() << std::endl;
+    if(lower_bound > 0)
+        std::cout << "reduced graph: " << 0 << ", " << 0 << std::endl;
+    else
+    std::cout << "reduced graph: " << graph.ncount() << ", " << graph.ecount() << std::endl;
 }
 
 
