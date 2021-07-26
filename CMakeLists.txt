@@ -28,7 +28,8 @@ ENDIF()
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 
 
-SET(EXACTCOLORS_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../exactcolors)
+
+
 FIND_PACKAGE(EXACTCOLORS)
 IF(EXACTCOLORS_FOUND)
     TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PRIVATE ${EXACTCOLORS_INCLUDE_DIRS})
@@ -37,9 +38,10 @@ ELSE()
     MESSAGE(STATUS "No precompiled version of exactcolors found, cloning and building from github")
     IF(USE_SOLVER STREQUAL "CPLEX")
         SET(SOLVER_EXPORT ${CPLEX_HOME_EXPORT})
+
     ENDIF()
     INCLUDE(ExternalProject)
-    MESSAGE(STATUS ${SOLVER_EXPORT})
+    SET(ENV{CPLEX_HOME} ${CPLEX_ROOT_DIR}/cplex)
     ExternalProject_Add(EXACTCOLORS
                         GIT_REPOSITORY https://github.com/heldstephan/exactcolors
                         DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/exactcolors
@@ -47,7 +49,7 @@ ELSE()
                         PATCH_COMMAND cmake -E echo "Skipping patch step."
                         UPDATE_COMMAND cmake -E echo "Skipping update step."
                         CONFIGURE_COMMAND cmake -E echo "Skipping configure step."
-                        BUILD_COMMAND make clean && export ${SOLVER_EXPORT} && make "libexactcolor.a" && cd mwis_sewell && make "libsewell.a"
+                        BUILD_COMMAND make clean && export "CPLEX_HOME=${CPLEX_ROOT_DIR}/cplex" && make "libexactcolor.a" && cd mwis_sewell && make "libsewell.a"
                         BUILD_IN_SOURCE 1
                         #            EXCLUDE_FROM_ALL TRUE
                         INSTALL_COMMAND cmake -E echo "Skipping install step."
@@ -60,13 +62,15 @@ ELSE()
     TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${SOURCE_DIR}/mwis_sewell/libsewell.a)
 ENDIF()
 
-
 SET(USE_SOLVER "CPLEX")
 
 IF(USE_SOLVER STREQUAL "CPLEX")
     FIND_PACKAGE(CPLEX REQUIRED)
     TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PRIVATE ${CPLEX_INCLUDE_DIRS})
     TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${CPLEX_LIBRARIES})
+
+    SET(CPLEX_HOME_EXPORT CPLEX_HOME=${CPLEX_ROOT_DIR}/cplex/)
+    SET(ENV{CPLEX_HOME} ${CPLEX_ROOT_DIR}/cplex/)
 ENDIF()
 
 
