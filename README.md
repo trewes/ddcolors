@@ -1,6 +1,6 @@
 # ddcolors
 My reimplementation of van Hoeve's graph coloring algorithm using decision diagrams.
-This was the wokr and topic of my Bachelor Thesis.
+This was the work and topic of my Bachelor Thesis.
 Based on the algorithm described in "W.-J. van Hoeve. Graph Coloring with Decision Diagrams. Mathematical Programming".
 
 ## Dependencies
