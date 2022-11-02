@@ -697,8 +697,8 @@ PathLabelConflict conflict_on_longest_path(const DecisionDiagram &dd, const Neig
     find_longest_path(dd, path, label);
 
     //look for a conflict on said longest path
-    for(int j = 1; j < int(path.size()); j++){
-        if(not label[j]){
+    for(int j = 1; j < int(path.size()-1); j++){
+       if(not label[j]) {
             continue;
         }
         //iterating this way we find the first smallest conflict, important assumption for Algorithm 1
@@ -715,8 +715,3 @@ PathLabelConflict conflict_on_longest_path(const DecisionDiagram &dd, const Neig
     }
     return {{}, {}, std::make_tuple(-1, -1)};
 }
-
-
-
-
-
