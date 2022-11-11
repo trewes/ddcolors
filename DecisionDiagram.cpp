@@ -380,7 +380,7 @@ detect_edge_conflict(DecisionDiagram dd, const NeighborList &neighbors, double f
 }
 
 
-double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_upper_bound, Formulation formulation) {
+double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_upper_bound, Formulation formulation, int num_cores, int mip_emphasis) {
 
     COLORlp *flow_lp;//environment is initialised in DDColors
     if (COLORlp_init(&flow_lp, "flow_lp")) {
@@ -389,6 +389,17 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
     if (COLORlp_objective_sense(flow_lp, COLORlp_MIN)) { //minimizing should be the default setting anyway
       throw std::runtime_error("COLORlp_objective_sense.");
     }
+
+    if (COLORlp_set_emphasis(flow_lp, mip_emphasis)) {
+      throw std::runtime_error("COLORlp_set_emphasis.");
+    }
+    // std::cout << "CPX_PARAM_MIPEMPHASIS set to " << mip_emphasis << std::endl;
+
+    if (COLORlp_set_threads(flow_lp, num_cores)) {
+      throw std::runtime_error("COLORlp_num_cores.");
+    }
+    // std::cout << "CPX_PARAM_THREADS set to " << num_cores << std::endl;
+
 
     unsigned int n = num_vars(dd);
     int var_bound = (coloring_upper_bound == -1) ? int(n) : coloring_upper_bound - 1;

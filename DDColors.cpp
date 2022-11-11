@@ -192,12 +192,9 @@ int DDColors::run() {
     lower_bound = 0; // ???
 
     if(opt.algorithm == Options::HeuristicRefinement) {
-        COLORlp_set_cores(opt.num_cores);
-        std::cout << "CPX_PARAM_THREADS set to " << opt.num_cores << std::endl;
         lower_bound = heuristic_iterative_refinement();
     } else if(opt.algorithm == Options::ExactCompilation or opt.algorithm == Options::ExactFractionalNumber) {
         std::cout << "Heuristic upper bound is " << heuristic_bound  << " computed in " << stats.tt_upper_bound << std::endl;
-
         std::chrono::steady_clock::time_point dd_start_time = std::chrono::steady_clock::now();
         DecisionDiagram dd = exact_decision_diagram(graph, neighbors, opt.size_limit);
         std::chrono::steady_clock::time_point dd_end_time = std::chrono::steady_clock::now();
@@ -207,17 +204,13 @@ int DDColors::run() {
         std::cout << "Decision diagram has " << num_nodes(dd)  << " nodes, " << num_arcs(dd) << " arcs and width "
                   << get_width(dd) << " (computed in " << dd_end_time - dd_start_time << ")."<< std::endl;
         COLORset_dbg_lvl(2);
-        COLORlp_set_emphasis(opt.MIP_emphasis);
-        std::cout << "CPX_PARAM_MIPEMPHASIS set to " << opt.MIP_emphasis << std::endl;
-        COLORlp_set_cores(opt.num_cores);
-        std::cout << "CPX_PARAM_THREADS set to " << opt.num_cores << std::endl;
 
         if(opt.algorithm == Options::ExactCompilation) {
-          double ip_flow = compute_flow_solution(dd, IP, upper_bound, opt.formulation);
+          double ip_flow = compute_flow_solution(dd, IP, upper_bound, opt.formulation, opt.num_cores, opt.MIP_emphasis);
           lower_bound = int(std::round(ip_flow));
           stats.num_ip_solved = 1;
         } else if(opt.algorithm == Options::ExactFractionalNumber){
-          double lp_flow = compute_flow_solution(dd, LP, upper_bound, opt.formulation);
+          double lp_flow = compute_flow_solution(dd, LP, upper_bound, opt.formulation, opt.num_cores, opt.MIP_emphasis);
           lower_bound = (int) std::ceil(lp_flow);
           fractional_chromatic = lp_flow;
           coloring_bound = int(primal_heuristic(dd).size());
@@ -395,8 +388,9 @@ int DDColors::heuristic_iterative_refinement() {
             model = IP;
             temporarily_switched_to_IP = true;
         }
-
-        double flow_value = compute_flow_solution(dd, model, upper_bound, opt.formulation); // = obj(F)
+        // Use default MIP emphases here (no
+        int mip_emphasis = 0;
+        double flow_value = compute_flow_solution(dd, model, upper_bound, opt.formulation, opt.num_cores,  mip_emphasis); // = obj(F)
         int flow_bound = (model == IP) ? int(std::round(flow_value)) : (int) std::ceil(flow_value);
         if(model == IP) stats.num_ip_solved++; else stats.num_lp_solved++;
         if(flow_bound > lower_bound){
