@@ -18,10 +18,12 @@
 
 #include <iomanip>
 #include <cfenv>
+#include <unordered_map>
+
 //#pragma STDC FENV_ACCESS ON //unused/has no effect
 
 #include "Graph.h"
-#include "unordered_map"
+
 
 extern "C" {
 #include "lp.h"            //needed for the interface to CPLEX to build and solve linear and integer programs
@@ -31,6 +33,9 @@ extern "C" {
 //In the path decomposition algorithms, when subtracting from the residual flow value floating point errors may occur
 //set a limit to how small the residual flow can get to avoid such errors
 #define double_eps std::pow(10, -8)
+
+
+
 
 //allows to print sets and vectors in a nice format via std::cout
 template<typename T>
@@ -42,6 +47,8 @@ typedef int LayerIndex;
 typedef int NodeIndex;
 typedef int EdgeIndex;
 typedef unsigned int Vertex;
+
+/** state info S(v), one for each vertex in decision diagram.*/
 typedef std::set<Vertex> StateInfo;
 
 /*
@@ -183,7 +190,7 @@ detect_edge_conflict(DecisionDiagram dd, const NeighborList &neighbors, double f
                      ConflictResolution find_conflicts = SingleConflict,
                      PathDecomposition path_decomposition = PreferOneArcs);
 
-enum Formulation {Normal, BoundConstraints, ExtraConstraints, VarColorBound, ObjectiveValueBound, OneArcsContinuous};
+enum Formulation {Normal, VarColorBound, OneArcsContinuous};
 
 double compute_flow_solution(DecisionDiagram &dd, Model model = IP, int coloring_upper_bound = -1,
                       Formulation formulation = Normal);

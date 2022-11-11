@@ -17,12 +17,6 @@ ADD_EXECUTABLE(${PROJECT_NAME} ${SOURCE_FILES})
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O3")
 
-#If Exactcolors has been extended by functions COLORlp_set_emphasis and COLORlp_set_cores
-# we can employ these for extra settings in our algorithm
-IF(EXTENDED_EXACTCOLORS STREQUAL "TRUE")
-    MESSAGE(STATUS "Extended Exactcolors, allowing to use extended options for DDcolors")
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DEXTENDED_EXACTCOLORS ")
-ENDIF()
 
 
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
@@ -75,4 +69,3 @@ ENDIF()
 
 
 UNSET(CPLEX_ROOT_DIR CACHE)
-
