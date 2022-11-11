@@ -1,4 +1,9 @@
+#include <chrono>
+
+
 #include "DecisionDiagram.h"
+
+
 
 template<typename T>
 std::ostream &operator<<(std::ostream &s, const std::set<T> &set) {
@@ -105,6 +110,9 @@ DecisionDiagram exact_decision_diagram(const Graph &g, const NeighborList &neigh
     int num_arcs = 0;
 
     StateInfo initial_state;
+
+
+    // add all vertices to root state set S(r)
     for(unsigned int i = 1; i <= g.ncount(); ++i){
         initial_state.insert(initial_state.end(), i);
     }
@@ -115,92 +123,78 @@ DecisionDiagram exact_decision_diagram(const Graph &g, const NeighborList &neigh
     //maps state sizes to node indices with that state size
     std::unordered_map< unsigned long , std::vector<int> > map_state_size_to_node_indices;
 
-    for(unsigned int layer = 0; layer < g.ncount(); ++layer){
-        dd[layer + 1].reserve(dd[layer].size() + 5);//some estimation for the size of the next layer, reserve some space for the vector
-        map_state_size_to_node_indices.reserve(dd[layer].size() + 5);
-        for(Node &u : dd[layer]){
-            if(num_nodes > size_limit*std::pow(10, 6)){
-                throw std::runtime_error("The exact decision diagram contains more than " + std::to_string(size_limit)
-                                        + " million nodes and already has width " + std::to_string(get_width(dd))
-                                        +" after layer "+std::to_string(layer)+" of "+std::to_string(g.ncount())+".");
-            }
-
-            if(u.state_info.count(layer + 1)){
-                auto new_state = u.state_info;
-                new_state.erase(layer + 1);
-                for(unsigned int neighbor : neighbors[layer]){
-                    new_state.erase(neighbor);
-                }
-
-                //check if there even exist nodes with state info of that size to possibly be equivalent to
-                if(not map_state_size_to_node_indices[new_state.size()].empty()){
-                    for(int index : map_state_size_to_node_indices[new_state.size()]){
-                        //check if nodes' states are equivalent
-                        if(new_state == dd[layer + 1][index].state_info){
-                            //redirect arc
-                            u.one_arc = index;
-                            break;
-                        }
-                    }
-                }
-                //found no equivalent node so construct one
-                if(u.one_arc == -1){
-                    dd[layer + 1].emplace_back(layer + 2, int(dd[layer + 1].size()), new_state);
-                    num_nodes++;
-                    u.one_arc = int(dd[layer + 1].size() - 1);
-                    map_state_size_to_node_indices[new_state.size()].push_back(u.one_arc); //new node, store index under size category
-                }
-                num_arcs++;
-
-                new_state = u.state_info;
-                new_state.erase(layer + 1);
-
-                //check if there even exist nodes with state info of that size to possibly be equivalent to
-                if(not map_state_size_to_node_indices[new_state.size()].empty()){
-                    for(int index : map_state_size_to_node_indices[new_state.size()]){
-                        //check if nodes' states are equivalent
-                        if(new_state == dd[layer + 1][index].state_info){
-                            //redirect arc
-                            u.zero_arc = index;
-                            break;
-                        }
-                    }
-                }
-                //found no equivalent node so construct one
-                if(u.zero_arc == -1){
-                    dd[layer + 1].emplace_back(layer + 2, int(dd[layer + 1].size()), new_state);
-                    num_nodes++;
-                    u.zero_arc = int(dd[layer + 1].size() - 1);
-                    map_state_size_to_node_indices[new_state.size()].push_back(u.zero_arc); //new node, store index under size category
-                }
-                num_arcs++;
-
-            } else{
-                //check if there even exist nodes with state info of that size to possibly be equivalent to
-                if(not map_state_size_to_node_indices[u.state_info.size()].empty()){
-                    for(int index : map_state_size_to_node_indices[u.state_info.size()]){
-                        //check if nodes' states are equivalent
-                        if(u.state_info == dd[layer + 1][index].state_info){
-                            //redirect arc
-                            u.zero_arc = index;
-                            break;
-                        }
-                    }
-                }
-                //found no equivalent node so construct one
-                if(u.zero_arc == -1){
-                    dd[layer + 1].emplace_back(layer + 2, int(dd[layer + 1].size()), u.state_info);
-                    num_nodes++;
-                    u.zero_arc = int(dd[layer + 1].size() - 1);
-                    map_state_size_to_node_indices[u.state_info.size()].push_back(u.zero_arc); //new node, store index under size category
-                }
-                num_arcs++;
-            }
+    for(unsigned int layer = 0; layer < g.ncount(); ++layer) {
+      dd[layer + 1].reserve(dd[layer].size() + 5);//some estimation for the size of the next layer, reserve some space for the vector
+      map_state_size_to_node_indices.reserve(dd[layer].size() + 5);
+      for(Node &u : dd[layer]) {
+        if(num_nodes > size_limit*std::pow(10, 6)){
+          throw std::runtime_error("The exact decision diagram contains more than " + std::to_string(size_limit)
+                                   + " million nodes and already has width " + std::to_string(get_width(dd))
+                                   +" after layer "+std::to_string(layer)+" of "+std::to_string(g.ncount())+".");
         }
-        map_state_size_to_node_indices.clear();
+
+
+        auto new_state = u.state_info;
+        new_state.erase(layer + 1);
+
+        { // Create 0-arc
+          //check if there even exist nodes with state info of that size to possibly be equivalent to
+          if(not map_state_size_to_node_indices[new_state.size()].empty()) {
+            for(int index : map_state_size_to_node_indices[new_state.size()]) {
+              //check if nodes' states are equivalent
+              if(new_state == dd[layer + 1][index].state_info) {
+                //redirect arc
+                u.zero_arc = index;
+                break;
+              }
+            }
+          }
+          //found no equivalent node so construct one
+          if(u.zero_arc == -1){
+            dd[layer + 1].emplace_back(layer + 2, int(dd[layer + 1].size()), new_state);
+            num_nodes++;
+            u.zero_arc = int(dd[layer + 1].size() - 1);
+            map_state_size_to_node_indices[new_state.size()].push_back(u.zero_arc); //new node, store index under size category
+          }
+          num_arcs++;
+        }
+
+        //If the next vertex/layer  is in state_info, we add a 1 arc:
+        if(u.state_info.count(layer + 1)) {
+          // Create 1-arc
+          //a 1-arc forces forces removal of neighbors
+          for(unsigned int neighbor : neighbors[layer]) {
+            new_state.erase(neighbor);
+          }
+
+          //check if there even exist nodes with state info of that size to possibly be equivalent to
+          if(not map_state_size_to_node_indices[new_state.size()].empty()) {
+            for(int index : map_state_size_to_node_indices[new_state.size()]) {
+              //check if nodes' states are equivalent
+              if(new_state == dd[layer + 1][index].state_info){
+                //redirect arc
+                u.one_arc = index;
+                break;
+              }
+            }
+          }
+          //found no equivalent node so construct one
+          if(u.one_arc == -1){
+            dd[layer + 1].emplace_back(layer + 2, int(dd[layer + 1].size()), new_state);
+            num_nodes++;
+            u.one_arc = int(dd[layer + 1].size() - 1);
+            map_state_size_to_node_indices[new_state.size()].push_back(u.one_arc); //new node, store index under size category
+          }
+          num_arcs++;
+        } // end addition of 1-arc
+
+        // At this place, we could delete the state infos of u, because they are no longer needed.
+      }
+
+      map_state_size_to_node_indices.clear();
     }
-    std::cout << "Done building the exact decision diagram containing " << num_nodes << " nodes, " << num_arcs
-              << " arcs and width " << get_width(dd) << "." << std::endl;
+
+    // Is this a return w/o copy
     return dd;
 }
 
@@ -389,8 +383,12 @@ detect_edge_conflict(DecisionDiagram dd, const NeighborList &neighbors, double f
 double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_upper_bound, Formulation formulation) {
 
     COLORlp *flow_lp;//environment is initialised in DDColors
-    COLORlp_init(&flow_lp, "flow_lp");
-    COLORlp_objective_sense(flow_lp, COLORlp_MIN); //minimizing should be the default setting anyway
+    if (COLORlp_init(&flow_lp, "flow_lp")) {
+      throw std::runtime_error("COLORlp_init failed.");
+    }
+    if (COLORlp_objective_sense(flow_lp, COLORlp_MIN)) { //minimizing should be the default setting anyway
+      throw std::runtime_error("COLORlp_objective_sense.");
+    }
 
     unsigned int n = num_vars(dd);
     int var_bound = (coloring_upper_bound == -1) ? int(n) : coloring_upper_bound - 1;
@@ -406,13 +404,19 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
             int obj = layer ? 0 : 1;
             //First add one_arc variables and then zero_arc variables. keep this ordering in mind!
             if(u.one_arc != -1){ //bound 1-arcs by 1
-                COLORlp_addcol(flow_lp, 0, (int *) nullptr, (double *) nullptr, obj,
-                               0.0, used_var_bound, var_type, nullptr);
+              if (COLORlp_addcol(flow_lp, 0, (int *) nullptr, (double *) nullptr, obj,
+                                 0.0, used_var_bound, var_type, nullptr))
+                {
+                  throw std::runtime_error("COLORlp_addcol.");
+                }
                 edge_index++;
             }
             //another variable for zero arc
-            COLORlp_addcol(flow_lp, 0, (int *) nullptr, (double *) nullptr, obj,
-                           0.0, used_var_bound, (formulation == OneArcsContinuous ? COLORlp_CONTINUOUS : var_type), nullptr);
+            if (COLORlp_addcol(flow_lp, 0, (int *) nullptr, (double *) nullptr, obj,
+                               0.0, used_var_bound, (formulation == OneArcsContinuous ? COLORlp_CONTINUOUS : var_type), nullptr))
+            {
+              throw std::runtime_error("COLORlp_addcol.");
+            }
             edge_index++;
         }
     }
@@ -441,10 +445,13 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
         }
         std::vector<double> vec_val(vec_ind.size(), 1.0); //this is just a vector full of 1.0 the size of vec_ind
         int num_one_arcs = int(vec_ind.size());
-        COLORlp_addrow(flow_lp, num_one_arcs, vec_ind.data(), vec_val.data(), COLORlp_GREATER_EQUAL, 1, nullptr);
+        if (COLORlp_addrow(flow_lp, num_one_arcs, vec_ind.data(), vec_val.data(), COLORlp_GREATER_EQUAL, 1, nullptr))
+        {
+          throw std::runtime_error("COLORlp_addrow.");
+        }
     }
 
-    //2.
+    //2. flow conservation
     edge_index = 0;
     int node_index = 0;
     //map of nodes to edge index
@@ -486,7 +493,10 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
             }
 
             int node_degree = int(vec_ind.size());
-            COLORlp_addrow(flow_lp, node_degree, vec_ind.data(), vec_val.data(), COLORlp_EQUAL, 0, nullptr);
+            if (COLORlp_addrow(flow_lp, node_degree, vec_ind.data(), vec_val.data(), COLORlp_EQUAL, 0, nullptr))
+            {
+              throw std::runtime_error("COLORlp_addrow.");
+            }
             node_index++;
         }
         old_incoming_arcs = new_incoming_arcs;
@@ -494,34 +504,20 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
     }
 
 
-    if(formulation == ExtraConstraints){
-        std::vector<int> index = {0};
-        std::vector<double> val = {1.0};
-        COLORlp_addrow(flow_lp, 1, index.data(), val.data(), COLORlp_EQUAL, 1, nullptr);
+    if (COLORlp_optimize(flow_lp)) {
+      throw std::runtime_error("COLORlp_optimize failed.");
     }
-    if(formulation == BoundConstraints){
-        //input variable bounds as extra constraints
-        std::vector<int> index = {0};
-        std::vector<double> val = {1.0};
-        for(int i = 0; i < num_columns; i++){
-            index = {i};
-            COLORlp_addrow(flow_lp, 1, index.data(), val.data(), COLORlp_LESS_EQUAL, var_bound, nullptr);
-        }
-    }
-    if(formulation == ObjectiveValueBound){
-        //add bound on objective value as constraint
-        std::vector<int> index = {0, 1};
-        std::vector<double> val = {1.0, 1.0};
-        COLORlp_addrow(flow_lp, 2, index.data(), val.data(), COLORlp_LESS_EQUAL, var_bound+1, nullptr);
-    }
-
-    COLORlp_optimize(flow_lp);
     double flow_val = 0;
-    COLORlp_objval(flow_lp, &flow_val);
+    if (COLORlp_objval(flow_lp, &flow_val)) {
+      throw std::runtime_error("COLORlp_objval failed. ");
+    }
 
     std::vector<double> solution;
     solution.reserve(num_columns);
-    COLORlp_x(flow_lp, solution.data());
+
+    if (COLORlp_x(flow_lp, solution.data())) {
+      throw std::runtime_error("COLORlp_x failed. ");
+    }
     solution.assign(solution.data(), solution.data() + num_columns);
 
     double double_safe_bound = 0.0;
@@ -534,7 +530,10 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
         // dual solution consists of n variables for the constraints of each layer + the variables for each node except r,t
         // + possibly dual variables for the bound constraints, if those are used
         dual_solution.reserve(n + dd_size - 2);
-        COLORlp_pi(flow_lp, dual_solution.data());
+        if (COLORlp_pi(flow_lp, dual_solution.data())) {
+          throw std::runtime_error("COLORlp_pi failed. ");
+        }
+
         dual_solution.assign(dual_solution.data(),
                              dual_solution.data() + n + dd_size - 2);
 

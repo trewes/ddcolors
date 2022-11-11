@@ -1,4 +1,3 @@
-
 /*
  * main.cpp
  * Purpose : program interface, allowing to set options for the execution of the algorithm
@@ -39,10 +38,8 @@ void print_help(){
     std::cout<<"-z|--randomness         :Enables random tie breaks in the coloring heuristic."<<std::endl;
     std::cout<<"-v|--verbosity arg      :Prints information every xth iteration of the refinement procedure, not only when bounds change (x must be a postive integer)."<<std::endl;
     std::cout<<"-s|--size_limit arg     :Limits the size of the decision diagram to x million nodes in exact compilation (x must be a postive integer)."<<std::endl;
-#ifdef EXTENDED_EXACTCOLORS
     std::cout<<"-e|--emphasis arg       :Changes the emphasis of CPLEX for the MIP on the exact decision diagram."<<std::endl;
     std::cout<<"-t|--threads arg        :Changes the number of allowed threads for CPLEX to use. If larger than 1, solving will be opportunistic."<<std::endl;
-#endif
 }
 
 #define MAX_PNAME_LEN 128
@@ -102,16 +99,12 @@ int main(int argc, char *argv[]) {
             {"randomness",      no_argument,       nullptr, 'z'},
             {"verbosity",       required_argument, nullptr, 'v'},
             {"size_limit",      required_argument, nullptr, 's'},
-#ifdef EXTENDED_EXACTCOLORS
             {"emphasis",       required_argument, nullptr, 'e'},
             {"threads",      required_argument, nullptr, 't'},
-#endif
     };
     Options dd_settings{};
     std::string short_opt = "hap::k::zc:o:r:l:m:d:f:v:s:";
-#ifdef EXTENDED_EXACTCOLORS
     short_opt += "e:t:";
-#endif
     while((opt = getopt_long(argc, argv, short_opt.c_str(), long_options, &option_index)) != -1){
         switch(opt){
 
@@ -123,9 +116,7 @@ int main(int argc, char *argv[]) {
                 return -1;
 
             case 'm':
-                if(*optarg == 'b'){
-                    dd_settings.algorithm = Options::BasicRefinement;
-                } else if(*optarg == 'i'){
+                if(*optarg == 'i'){
                     dd_settings.algorithm = Options::HeuristicRefinement;
                 } else if(*optarg == 'e'){
                     dd_settings.algorithm = Options::ExactCompilation;
@@ -236,12 +227,6 @@ int main(int argc, char *argv[]) {
             case 'f':
                 if(*optarg == 'n'){
                     dd_settings.formulation = Normal;
-                } else if(*optarg == 'b'){
-                    dd_settings.formulation = BoundConstraints;
-                } else if(*optarg == 'e'){
-                    dd_settings.formulation = ExtraConstraints;
-                } else if(*optarg == 'o'){
-                    dd_settings.formulation = ObjectiveValueBound;
                 } else if(*optarg == 'c'){
                     dd_settings.formulation = VarColorBound;
                 }else if(*optarg == 'r'){
@@ -280,8 +265,6 @@ int main(int argc, char *argv[]) {
                         " million nodes in the exact decision diagram, be sure that is what you want." << std::endl;
                 }
                 break;
-
-#ifdef EXTENDED_EXACTCOLORS
             case 'e':
                 dd_settings.MIP_emphasis = std::stoi(optarg, nullptr, 10);
                 if(dd_settings.MIP_emphasis < 0 or 4 < dd_settings.MIP_emphasis){
@@ -293,7 +276,6 @@ int main(int argc, char *argv[]) {
             case 't':
                 dd_settings.num_cores = std::stoi(optarg, nullptr, 10);
                 break;
-#endif
         }
     }
 

@@ -88,7 +88,7 @@ void DDColors::initialise() {
 
     if(opt.preprocess_graph){
         preprocessing_graph(opt.clique_num_branches);
-        if(lower_bound > 0){
+        if(lower_bound == upper_bound){
             return;
         }
     } else if(opt.use_clique_in_ordering){
@@ -112,7 +112,7 @@ void DDColors::initialise() {
     Permutation dsatur_original_ordering;
     Permutation max_connected_degree_ordering;
     neighbors = graph.get_neighbor_list(); //get neighbors once for all three heuristics
-    if((graph.ncount() < 1500 and graph.ecount() < 750000) or opt.algorithm == Options::HeuristicOnly){//run all coloring heuristics for a strong upper bound
+    if(opt.algorithm == Options::HeuristicOnly){//run all coloring heuristics for a strong upper bound
         heuristic_bound = std::min(heuristic_bound, int(graph.dsatur(dsatur_ordering, neighbors, clique).size()));
         heuristic_bound = std::min(heuristic_bound, int(graph.dsatur_original(dsatur_original_ordering, neighbors, clique).size()));
         heuristic_bound = std::min(heuristic_bound, int(graph.max_connected_degree_coloring(max_connected_degree_ordering, neighbors, clique).size()));
@@ -174,7 +174,7 @@ DDColors::~DDColors() {
 
 
 int DDColors::run() {
-    if(lower_bound > 0){
+    if(lower_bound == upper_bound){
         std::cout << "Graph was already solved in the preprocessing step." << std::endl;
         std::cout << "Execution took: ";
         Statistics::pretty_time(stats.execution_time);
@@ -189,44 +189,41 @@ int DDColors::run() {
         return heuristic_bound;
     }
 
-    lower_bound = 0;
-    if(opt.algorithm == Options::BasicRefinement){
-        lower_bound = basic_iterative_refinement();
-    } else if(opt.algorithm == Options::HeuristicRefinement){
-#ifdef EXTENDED_EXACTCOLORS
+    lower_bound = 0; // ???
+
+    if(opt.algorithm == Options::HeuristicRefinement) {
         COLORlp_set_cores(opt.num_cores);
         std::cout << "CPX_PARAM_THREADS set to " << opt.num_cores << std::endl;
-#endif
         lower_bound = heuristic_iterative_refinement();
-    } else if(opt.algorithm == Options::ExactCompilation){
-        std::cout << "Heuristic bound is " << heuristic_bound  << " computed in " << stats.tt_upper_bound << std::endl;
+    } else if(opt.algorithm == Options::ExactCompilation or opt.algorithm == Options::ExactFractionalNumber) {
+        std::cout << "Heuristic upper bound is " << heuristic_bound  << " computed in " << stats.tt_upper_bound << std::endl;
+
+        std::chrono::steady_clock::time_point dd_start_time = std::chrono::steady_clock::now();
         DecisionDiagram dd = exact_decision_diagram(graph, neighbors, opt.size_limit);
+        std::chrono::steady_clock::time_point dd_end_time = std::chrono::steady_clock::now();
         stats.decision_diagram_size = num_nodes(dd);
         stats.decision_diagram_arcs = num_arcs(dd);
         stats.decision_diagram_width = get_width(dd);
+        std::cout << "Decision diagram has " << num_nodes(dd)  << " nodes, " << num_arcs(dd) << " arcs and width "
+                  << get_width(dd) << " (computed in " << dd_end_time - dd_start_time << ")."<< std::endl;
         COLORset_dbg_lvl(2);
-#ifdef EXTENDED_EXACTCOLORS
         COLORlp_set_emphasis(opt.MIP_emphasis);
         std::cout << "CPX_PARAM_MIPEMPHASIS set to " << opt.MIP_emphasis << std::endl;
         COLORlp_set_cores(opt.num_cores);
         std::cout << "CPX_PARAM_THREADS set to " << opt.num_cores << std::endl;
-#endif
-        double ip_flow = compute_flow_solution(dd, IP, heuristic_bound, opt.formulation);
-        lower_bound = int(std::round(ip_flow));
-        stats.num_ip_solved = 1;
-    }else if(opt.algorithm == Options::ExactFractionalNumber){
-        std::cout << "Heuristic bound is " << heuristic_bound  << " computed in " << stats.tt_upper_bound << std::endl;
-        DecisionDiagram dd = exact_decision_diagram(graph, neighbors, opt.size_limit);
-        stats.decision_diagram_size = num_nodes(dd);
-        stats.decision_diagram_arcs = num_arcs(dd);
-        stats.decision_diagram_width = get_width(dd);
-        COLORset_dbg_lvl(2);
-        double lp_flow = compute_flow_solution(dd, LP, heuristic_bound, opt.formulation);
-        lower_bound = (int) std::ceil(lp_flow);
-        fractional_chromatic = lp_flow;
-        coloring_bound = int(primal_heuristic(dd).size());
-        upper_bound = std::min(heuristic_bound, coloring_bound);
-        stats.num_lp_solved = 1;
+
+        if(opt.algorithm == Options::ExactCompilation) {
+          double ip_flow = compute_flow_solution(dd, IP, upper_bound, opt.formulation);
+          lower_bound = int(std::round(ip_flow));
+          stats.num_ip_solved = 1;
+        } else if(opt.algorithm == Options::ExactFractionalNumber){
+          double lp_flow = compute_flow_solution(dd, LP, upper_bound, opt.formulation);
+          lower_bound = (int) std::ceil(lp_flow);
+          fractional_chromatic = lp_flow;
+          coloring_bound = int(primal_heuristic(dd).size());
+          upper_bound = std::min(upper_bound, coloring_bound);
+          stats.num_lp_solved = 1;
+        }
     }
     std::chrono::steady_clock::time_point end_time = std::chrono::steady_clock::now();
     stats.execution_time = (end_time - stats.start_time);
@@ -257,49 +254,6 @@ void DDColors::longest_path_refinement(DecisionDiagram &dd) {
                   << " iterations, begin iterative refinement" << std::endl;
     }
 }
-
-
-int DDColors::basic_iterative_refinement() {
-
-    Model model = (opt.relaxation == Options::IP_Only) ? IP : LP;
-
-    bool found_solution = false;
-    DecisionDiagram dd = initial_decision_diagram(graph);
-    lower_bound = 0;
-
-    longest_path_refinement(dd);
-
-    while(not found_solution){
-        double flow_value = compute_flow_solution(dd, model, upper_bound, opt.formulation); // = obj(F)
-        int flow_bound = (model == IP) ? int(std::round(flow_value)) : (int) std::ceil(flow_value);
-        if(model == IP) stats.num_ip_solved++; else stats.num_lp_solved++;
-        if(flow_bound > lower_bound){
-            update_lower_bound(flow_bound);
-            print_bounds(dd, flow_value);
-        }
-
-        std::vector<PathLabelConflict> conflict_info =
-                detect_edge_conflict(dd, neighbors, flow_value, model, opt.find_conflicts, opt.path_decomposition);
-        if(conflict_info.empty()){
-            if(model == LP){
-                std::cout << "Switching from LP to IP since no conflict was found" << std::endl;
-                model = IP;
-                continue;
-            } else break;
-        }
-
-        stats.num_conflicts += conflict_info.size();
-        for(const PathLabelConflict &plc : conflict_info){
-            separate_edge_conflict(dd, neighbors, plc, opt.redirect_arcs);
-        }
-    }
-
-    stats.decision_diagram_size = num_nodes(dd);
-    stats.decision_diagram_arcs = num_arcs(dd);
-    stats.decision_diagram_width = get_width(dd);
-    return lower_bound;
-}
-
 
 Coloring DDColors::primal_heuristic(DecisionDiagram dd) {
     int n = int(dd.size() - 1);
@@ -517,9 +471,7 @@ void DDColors::update_upper_bound(int coloring_size) {
 }
 
 void DDColors::print_bounds(const DecisionDiagram &dd, double obj_value) const {
-    if(opt.algorithm == Options::BasicRefinement){
-        std::cout << "bounds: lower " << lower_bound << " time: tt_lb " << stats.tt_lower_bound;
-    } else if(opt.algorithm == Options::HeuristicRefinement){
+   if(opt.algorithm == Options::HeuristicRefinement){
         std::cout << "bounds: lower " << lower_bound << (coloring_bound < heuristic_bound ? " upper  " : " upper* ")
                   << upper_bound << " time: tt_lb " << stats.tt_lower_bound << " tt_ub " << stats.tt_upper_bound;
     }
@@ -736,10 +688,10 @@ void DDColors::preprocessing_graph(int nbranches) {
 
         //dominated vertices are not part of a clique, can remove this before searching for one
         graph.remove_dominated_vertices();
-        if(graph.ncount() == 0 or graph.ncount() <= clique_size){
-            //can return with clique size/lower bound
+        if(graph.ncount() == 0 or graph.ncount() <= clique_size) {
+            //can return with clique size/lower & upper bound
             //this already solves the graph
-            lower_bound = clique_size;
+            lower_bound = upper_bound = clique_size;
             break;
         }
 
@@ -748,10 +700,10 @@ void DDColors::preprocessing_graph(int nbranches) {
         clique_size = std::max(clique_size, int(tclique.size()));
         graph.peel_graph(clique_size);
 
-        if(graph.ncount() == 0 or graph.ncount() <= clique_size or clique_size == heuristic_bound){
+        if (graph.ncount() == 0 or graph.ncount() <= clique_size) {
             //can return with clique size/lower bound
             //this already solves the graph
-            lower_bound = clique_size;
+            lower_bound = upper_bound = clique_size;
             break;
         }
 
@@ -762,11 +714,9 @@ void DDColors::preprocessing_graph(int nbranches) {
             break;
         }
     }
-    if(lower_bound > 0)
+    if(lower_bound == upper_bound) {
         std::cout << "reduced graph: " << 0 << ", " << 0 << std::endl;
-    else
-    std::cout << "reduced graph: " << graph.ncount() << ", " << graph.ecount() << std::endl;
+    } else {
+      std::cout << "reduced graph: " << graph.ncount() << ", " << graph.ecount() << std::endl;
+    }
 }
-
-
-

@@ -94,7 +94,7 @@ struct Statistics{
  */
 
 struct Options{
-    enum Algorithm {BasicRefinement, HeuristicRefinement, ExactCompilation, HeuristicOnly, ExactFractionalNumber};
+    enum Algorithm {HeuristicRefinement, ExactCompilation, HeuristicOnly, ExactFractionalNumber};
     Algorithm algorithm = HeuristicRefinement;
     RedirectArcs redirect_arcs = OriginalArcs;
     ConflictResolution find_conflicts = MultipleConflicts;
@@ -113,10 +113,8 @@ struct Options{
     int clique_num_branches = -1;
     int verbosity_frequency = 0;
     int size_limit = 1;//in million nodes
-#ifdef EXTENDED_EXACTCOLORS
     int MIP_emphasis = 0;
     int num_cores = 1;
-#endif
 };
 
 /*
@@ -180,7 +178,6 @@ private:
      *              graph and computing the heuristic bound as well as the permuted graph to the set variable ordering
      * longest_path_refinement : calls the longest path routine before beginning iterative refinement, for as many times
      *                           as given in settings, looks for and separates an edge conflict on a longest path
-     * basic_iterative_refinement : implements the iterative refinement algorithm without the primal heuristic
      * primal_heuristic : the primal heuristic using the computed flow on the edges of the decision diagram
      * find_conflict_and_primal_heuristic : combines finding an edge conflict and the primal heuristic into
      *                                      a single function, useful since both use a similar path decomposition and
@@ -198,8 +195,6 @@ private:
     void initialise();
 
     void longest_path_refinement(DecisionDiagram &dd);
-
-    int basic_iterative_refinement();
 
     //pass dd here as a copy so we keep flow on original dd
     Coloring primal_heuristic(DecisionDiagram dd);
