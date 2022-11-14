@@ -209,6 +209,14 @@ int DDColors::run() {
           double ip_flow = compute_flow_solution(dd, IP, upper_bound, opt.formulation, opt.num_cores, opt.MIP_emphasis);
           lower_bound = int(std::round(ip_flow));
           stats.num_ip_solved = 1;
+
+          Coloring coloring = coloring_from_integer_flow_on_exact_dd(dd);
+          std::cout << "Computed the following coloring from the integer flow solution on the exact decision diagram:" << std::endl;
+          for(const ColorClass &cclass : coloring){
+              for(const Vertex v : cclass){
+                  std::cout << v << " ";
+              }std::cout << std::endl;
+          }
         } else if(opt.algorithm == Options::ExactFractionalNumber){
           double lp_flow = compute_flow_solution(dd, LP, upper_bound, opt.formulation, opt.num_cores, opt.MIP_emphasis);
           lower_bound = (int) std::ceil(lp_flow);
@@ -338,6 +346,64 @@ Coloring DDColors::primal_heuristic(DecisionDiagram dd) {
     return coloring;
 }
 
+
+Coloring DDColors::coloring_from_integer_flow_on_exact_dd(DecisionDiagram dd) {
+    int n = int(dd.size() - 1);
+    Coloring coloring;
+    bool color_used = true;
+    std::set<unsigned int> coloring_selected_vertices;
+
+    while(int(coloring_selected_vertices.size()) < n and color_used){
+        ColorClass cclass;
+        color_used = false;
+        Path path;
+        Label label;
+        std::set<int> neighboring_selected_vertices;//store vertices and neighbors of the currently considered color
+        double path_min_flow = n;
+        path.push_back(0); //index of root node
+
+        for(int i = 0; i < n; i++){
+            int u = path.back();
+            //TODO flow is supposed to be integral, and if positive, equal to 1
+            // checking for >= 1/2 should avoid any floating point errors
+            if((dd[i][u].one_arc != -1) and dd[i][u].one_arc_flow >= 1/2){
+                path_min_flow = std::min(path_min_flow, dd[i][u].one_arc_flow);
+                path.push_back(dd[i][u].one_arc);
+                label.push_back(oneArc);
+                if((neighboring_selected_vertices.count(i + 1) == 0) and
+                   (coloring_selected_vertices.count(i + 1) == 0)){
+                    //can add vertex to current color class as there is no conflict
+                    cclass.insert(cclass.end(), i + 1);
+                    coloring_selected_vertices.insert(coloring_selected_vertices.end(), i + 1);
+                    neighboring_selected_vertices.insert(neighboring_selected_vertices.end(), i + 1);
+                    neighboring_selected_vertices.insert(neighbors[i].begin(), neighbors[i].end());
+                    color_used = true;
+                }
+            } else{
+                path_min_flow = std::min(path_min_flow, dd[i][u].zero_arc_flow);
+                path.push_back(dd[i][u].zero_arc);
+                label.push_back(zeroArc);
+            }
+        }
+        if(color_used){
+            coloring.push_back(cclass);
+            if(path_min_flow > 0){
+                for(int i = 0; i < n; i++){
+                    if(label[i]){
+                        dd[i][path[i]].one_arc_flow -= path_min_flow;
+                    } else{
+                        dd[i][path[i]].zero_arc_flow -= path_min_flow;
+                    }
+                }
+            }
+        }
+    }
+    if(int(coloring_selected_vertices.size()) < n){
+        throw std::runtime_error("Did not find a coloring from the solution of the IP on the exact decision diagram, "
+                                 "probably due to floating point error in the path decomposition of the flow.");
+    }
+    return coloring;
+}
 
 bool DDColors::heuristic_try_color_swap(Vertex vertex, const NeighborList &neighbors, Coloring &coloring) {
     for(unsigned int j = 0; j < coloring.size(); j++){

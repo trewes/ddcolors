@@ -23,8 +23,7 @@ extern "C" {
 #include "color.h"
 }
 
-typedef unsigned int Color;
-typedef std::set<Color> ColorClass;
+typedef std::set<Vertex> ColorClass;
 typedef std::vector<ColorClass> Coloring;
 
 std::ostream &operator<<(std::ostream &s, std::chrono::duration<double> duration);
@@ -215,6 +214,9 @@ private:
     void update_upper_bound(int coloring_size);
 
     void print_bounds(const DecisionDiagram &dd, double obj_value) const;
+
+    //computes a coloring given integer program flow solution on exact decision diagram
+    Coloring coloring_from_integer_flow_on_exact_dd(DecisionDiagram dd);
 
 };
 

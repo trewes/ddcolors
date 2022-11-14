@@ -29,8 +29,7 @@ typedef unsigned int Vertex;
 typedef std::vector<std::vector<Vertex> > NeighborList;
 //note that permutations are given as positive integers, there is no i s.t. perm[i] = 0, it's always positive
 typedef std::vector<unsigned int> Permutation;
-typedef unsigned int Color;
-typedef std::set<Color> ColorClass;
+typedef std::set<Vertex> ColorClass;
 typedef std::vector<ColorClass> Coloring;
 
 //allows to print sets and vectors in a nice format via std::cout
