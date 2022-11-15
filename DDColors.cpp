@@ -220,7 +220,7 @@ int DDColors::run() {
                 throw std::runtime_error("The transformed coloring on the original graph is not valid.");
             }
 
-            std::cout << "Computed the following permuted_coloring from the integer flow solution on the exact decision diagram:" << std::endl;
+            std::cout << "Computed the following coloring from the integer flow solution on the exact decision diagram:" << std::endl;
             for(unsigned int i = 0; i < coloring.size(); i++){
                 std::cout << "Color " << i << ": " ;
                 for(const Vertex &v : coloring[i]){
