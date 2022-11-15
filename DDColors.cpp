@@ -106,7 +106,6 @@ void DDColors::initialise() {
     if(opt.ordering_random_tiebreaks){
         graph.use_random_tiebreaks();
     }
-    Permutation graph_ordering;
     //take the best of the three heuristic bounds
     Permutation dsatur_ordering;
     Permutation dsatur_original_ordering;
@@ -210,12 +209,24 @@ int DDColors::run() {
           lower_bound = int(std::round(ip_flow));
           stats.num_ip_solved = 1;
 
-          Coloring coloring = coloring_from_integer_flow_on_exact_dd(dd);
-          std::cout << "Computed the following coloring from the integer flow solution on the exact decision diagram:" << std::endl;
-          for(const ColorClass &cclass : coloring){
-              for(const Vertex v : cclass){
-                  std::cout << v << " ";
+        if(not opt.preprocess_graph){//only find coloring if graph was not changed
+            Coloring permuted_coloring = coloring_from_integer_flow_on_exact_dd(dd);
+            if(not verify_is_coloring(permuted_coloring, neighbors)){
+                throw std::runtime_error("The found coloring on the permuted graph is not valid.");
+            }
+            //compute coloring on non permuted graph. extra check that is not necessary but safer
+            Coloring coloring = coloring_on_non_permuted_graph(permuted_coloring);
+            if(not verify_is_coloring(coloring, graph.perm_graph(graph_ordering).get_neighbor_list())){
+                throw std::runtime_error("The transformed coloring on the original graph is not valid.");
+            }
+
+            std::cout << "Computed the following permuted_coloring from the integer flow solution on the exact decision diagram:" << std::endl;
+            for(unsigned int i = 0; i < coloring.size(); i++){
+                std::cout << "Color " << i << ": " ;
+                for(const Vertex &v : coloring[i]){
+                    std::cout << v << " ";
               }std::cout << std::endl;
+            }
           }
         } else if(opt.algorithm == Options::ExactFractionalNumber){
           double lp_flow = compute_flow_solution(dd, LP, upper_bound, opt.formulation, opt.num_cores, opt.MIP_emphasis);
@@ -347,6 +358,50 @@ Coloring DDColors::primal_heuristic(DecisionDiagram dd) {
 }
 
 
+bool DDColors::verify_is_coloring(const Coloring &coloring, const NeighborList &neighbor_list) {
+    for (const ColorClass &cclass: coloring) {
+        //iterate over the set that is the colorclass
+        for (auto v = cclass.begin(); v != cclass.end(); v++) {
+            for (auto w = std::next(v, 1); w != cclass.end(); w++) {
+                {
+                    //check if w is in the list of neighbor_list of v
+                    if (std::find(neighbor_list[*v - 1].begin(), neighbor_list[*v - 1].end(), *w) != neighbor_list[*v - 1].end()){
+                        std::cout << "edge " << *v << "," << *w << std::endl;
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    return true;
+}
+
+
+Coloring DDColors::coloring_on_non_permuted_graph(const Coloring & in_coloring) {
+    //transform to vector to apply permutation transformation
+    std::vector<std::vector<Vertex>> vec_coloring;
+    vec_coloring.resize(in_coloring.size());
+    for(unsigned int i = 0; i < in_coloring.size(); i++) {
+        vec_coloring[i] = std::vector<Vertex>{in_coloring[i].begin(), in_coloring[i].end()};
+    }
+
+    for (std::vector<Vertex> &cclass: vec_coloring) {
+        //iterate over the set that is the colorclass
+        for(unsigned int i = 0; i < cclass.size(); i++) {
+            //apply permutation to elements
+            cclass[i] = graph_ordering[cclass[i] - 1];
+            }
+        }
+
+    //transform to set and thus to a Coloring object again
+    Coloring out_coloring;
+    out_coloring.resize(in_coloring.size());
+    for(unsigned int i = 0; i < in_coloring.size(); i++) {
+        out_coloring[i] = std::set<Vertex>{vec_coloring[i].begin(), vec_coloring[i].end()};
+    }
+    return out_coloring;
+}
+
 Coloring DDColors::coloring_from_integer_flow_on_exact_dd(DecisionDiagram dd) {
     int n = int(dd.size() - 1);
     Coloring coloring;
@@ -366,7 +421,7 @@ Coloring DDColors::coloring_from_integer_flow_on_exact_dd(DecisionDiagram dd) {
             int u = path.back();
             //TODO flow is supposed to be integral, and if positive, equal to 1
             // checking for >= 1/2 should avoid any floating point errors
-            if((dd[i][u].one_arc != -1) and dd[i][u].one_arc_flow >= 1/2){
+            if((dd[i][u].one_arc != -1) and dd[i][u].one_arc_flow >= 0.5){
                 path_min_flow = std::min(path_min_flow, dd[i][u].one_arc_flow);
                 path.push_back(dd[i][u].one_arc);
                 label.push_back(oneArc);

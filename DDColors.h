@@ -129,6 +129,7 @@ public:
      * Member variables
      * graph : the underlying graph which to find the chromatic number for
      * neighbors : the adjacency data of the vertices of the graph in a more useful format than just the edge list
+     * graph_ordering : the used vertex ordering, graph is permuted according to this
      * opt : an options object that gets passed during the initialisation and sets how and what algorithm is executed
      * stats : a stats object in which all the execution information of the algorithm is stored
      * lower_bound : stores the lower bound if one is obtained during any algorithm
@@ -160,6 +161,7 @@ public:
 private:
     Graph graph;
     NeighborList neighbors;
+    Permutation graph_ordering;
     const Options opt;
     Statistics stats;
     int lower_bound = 0;
@@ -217,6 +219,10 @@ private:
 
     //computes a coloring given integer program flow solution on exact decision diagram
     Coloring coloring_from_integer_flow_on_exact_dd(DecisionDiagram dd);
+
+    bool verify_is_coloring(const Coloring &coloring, const NeighborList &neighbor_list);
+
+    Coloring coloring_on_non_permuted_graph(const Coloring &in_coloring);
 
 };
 
