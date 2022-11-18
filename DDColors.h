@@ -111,9 +111,10 @@ struct Options{
     bool use_clique_in_ordering = false;
     int clique_num_branches = -1;
     int verbosity_frequency = 0;
-    int size_limit = 1;//in million nodes
+    int size_limit = 10;//in million nodes
     int MIP_emphasis = 0;
     int num_cores = 1;
+    std::string exact_ip_file;
 };
 
 /*
@@ -162,7 +163,7 @@ private:
     Graph graph;
     NeighborList neighbors;
     Permutation graph_ordering;
-    const Options opt;
+    const Options& opt;
     Statistics stats;
     int lower_bound = 0;
     int upper_bound = std::numeric_limits<int>::max();

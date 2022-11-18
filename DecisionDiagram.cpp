@@ -380,7 +380,9 @@ detect_edge_conflict(DecisionDiagram dd, const NeighborList &neighbors, double f
 }
 
 
-double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_upper_bound, Formulation formulation, int num_cores, int mip_emphasis) {
+double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_upper_bound,
+                             Formulation formulation, int num_cores, int mip_emphasis,
+                             std::string mip_file) {
 
     COLORlp *flow_lp;//environment is initialised in DDColors
     if (COLORlp_init(&flow_lp, "flow_lp")) {
@@ -514,6 +516,11 @@ double compute_flow_solution(DecisionDiagram &dd, Model model, int coloring_uppe
         new_incoming_arcs.clear();
     }
 
+    if( ! mip_file.empty()) {
+      if (COLORlp_write(flow_lp, mip_file.c_str())) {
+        throw std::runtime_error("COLORlp_write failed.");
+      }
+    }
 
     if (COLORlp_optimize(flow_lp)) {
       throw std::runtime_error("COLORlp_optimize failed.");

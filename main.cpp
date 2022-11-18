@@ -37,9 +37,10 @@ void print_help(){
     std::cout<<"-k|--clique             :Looks for a clique whose vertices are fixed as the first ones in the ordering and in the upper bound heuristic."<<std::endl;
     std::cout<<"-z|--randomness         :Enables random tie breaks in the coloring heuristic."<<std::endl;
     std::cout<<"-v|--verbosity arg      :Prints information every xth iteration of the refinement procedure, not only when bounds change (x must be a postive integer)."<<std::endl;
-    std::cout<<"-s|--size_limit arg     :Limits the size of the decision diagram to x million nodes in exact compilation (x must be a postive integer)."<<std::endl;
+    std::cout<<"-s|--size_limit arg     :Limits the size of the decision diagram to x million nodes in exact compilation (x must be a postive integer, default x=10)."<<std::endl;
     std::cout<<"-e|--emphasis arg       :Changes the emphasis of CPLEX for the MIP on the exact decision diagram."<<std::endl;
     std::cout<<"-t|--threads arg        :Changes the number of allowed threads for CPLEX to use. If larger than 1, solving will be opportunistic."<<std::endl;
+    std::cout<<"-t|--write_ip_file arg  : Write an IP file in 'lp' format if the exact method is chosen to the given filename." << std::endl;
 }
 
 #define MAX_PNAME_LEN 128
@@ -100,10 +101,11 @@ int main(int argc, char *argv[]) {
             {"verbosity",       required_argument, nullptr, 'v'},
             {"size_limit",      required_argument, nullptr, 's'},
             {"emphasis",       required_argument, nullptr, 'e'},
-            {"threads",      required_argument, nullptr, 't'},
+            {"threads",        required_argument, nullptr, 't'},
+            {"write_ip_file",   optional_argument, nullptr, 'w'},
     };
     Options dd_settings{};
-    std::string short_opt = "hap::k::zc:o:r:l:m:d:f:v:s:";
+    std::string short_opt = "hap::k::zc:o:r:l:m:d:f:v:s:w:";
     short_opt += "e:t:";
     while((opt = getopt_long(argc, argv, short_opt.c_str(), long_options, &option_index)) != -1){
         switch(opt){
@@ -276,6 +278,10 @@ int main(int argc, char *argv[]) {
             case 't':
                 dd_settings.num_cores = std::stoi(optarg, nullptr, 10);
                 break;
+            case 'w':
+                dd_settings.exact_ip_file = std::string(optarg);
+                break;
+
         }
     }
 

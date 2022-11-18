@@ -194,7 +194,8 @@ enum Formulation {Normal, VarColorBound, OneArcsContinuous};
 
 double compute_flow_solution(DecisionDiagram &dd, Model model = IP, int coloring_upper_bound = -1,
                              Formulation formulation = Normal,
-                             int num_cores = 1, int mip_emphasis = 0);
+                             int num_cores = 1, int mip_emphasis = 0,
+                             std::string mip_file = "");
 
 void find_longest_path(const DecisionDiagram &dd, Path &path, Label &label);
 
