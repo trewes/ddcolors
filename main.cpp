@@ -40,7 +40,7 @@ void print_help(){
     std::cout<<"-s|--size_limit arg     :Limits the size of the decision diagram to x million nodes in exact compilation (x must be a postive integer, default x=10)."<<std::endl;
     std::cout<<"-e|--emphasis arg       :Changes the emphasis of CPLEX for the MIP on the exact decision diagram."<<std::endl;
     std::cout<<"-t|--threads arg        :Changes the number of allowed threads for CPLEX to use. If larger than 1, solving will be opportunistic."<<std::endl;
-    std::cout<<"-t|--write_ip_file arg  : Write an IP file in 'lp' format if the exact method is chosen to the given filename." << std::endl;
+    std::cout<<"-w|--write_ip_file arg  : Write an IP file in 'lp' format if the exact method is chosen to the given filename." << std::endl;
 }
 
 #define MAX_PNAME_LEN 128
