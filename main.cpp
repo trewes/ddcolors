@@ -19,8 +19,8 @@ void print_help(){
     std::cout<<"Usage: ddcolors.exe [options] graph"<<std::endl;
     std::cout<<"Options:"<<std::endl;
     std::cout<<"-h|--help               :Prints this help message."<<std::endl;
-    std::cout<<"-m|--method arg         :Which algorithm is to be run to get the chromatic number: i for iterative refinement (default),"<<std::endl;//b for basic as hidden option
-    std::cout<<"                         e for exact compilation, h for heuristic (only an upper bound) and f to compute the fractional chromatic number."<<std::endl;
+    std::cout<<"-m|--method arg         :Which algorithm is to be run to get the chromatic number: e for exact compilation (default),"<<std::endl;//b for basic as hidden option
+    std::cout<<"                         i for iterative refinement, h for heuristic (only an upper bound) and f to compute the fractional chromatic number."<<std::endl;
     std::cout<<"-o|--ordering arg       :Option of which vertex ordering is to be used. d for dsatur ordering (default)."<<std::endl;
     std::cout<<"                         l for lexicographic, m for max connected degree, w for minimum width ordering."<<std::endl;
     std::cout<<"-r|--relaxation arg     :IP solver relaxation: l for LP first and then IP (default), i for IP only"<<std::endl;
@@ -88,7 +88,7 @@ int main(int argc, char *argv[]) {
             {"help",            no_argument,       nullptr, 'h'},
             {"arc_redirection", no_argument,       nullptr, 'a'},
             {"preprocessing",   optional_argument, nullptr, 'p'},
-            {"method",          required_argument, nullptr, 'm'},
+            {"method",          required_argument, nullptr, 'e'},
             {"conflicts",       required_argument, nullptr, 'c'},
             {"ordering",        required_argument, nullptr, 'o'},
             {"relaxation",      required_argument, nullptr, 'r'},
@@ -131,6 +131,7 @@ int main(int argc, char *argv[]) {
                     std::cout << "Program failed." << std::endl;
                     return -1;
                 }
+                std::cout << "Method is" << dd_settings.algorithm << std::endl;
                 break;
             case 'a':
                 dd_settings.redirect_arcs = RedirectArcs::MostSimilarNode;
@@ -295,6 +296,10 @@ int main(int argc, char *argv[]) {
     try{
         program_header(argc, argv);
         std::cout << "Begin ddcolors:" << std::endl;
+        if(dd_settings.algorithm == Options::ExactCompilation){
+          std::cout << "Running exact compilation of decision diagram " << std::endl;
+        }
+
 
         DDColors ddcolors(filename, dd_settings);
 

@@ -94,7 +94,7 @@ struct Statistics{
 
 struct Options{
     enum Algorithm {HeuristicRefinement, ExactCompilation, HeuristicOnly, ExactFractionalNumber};
-    Algorithm algorithm = HeuristicRefinement;
+    Algorithm algorithm = ExactCompilation;
     RedirectArcs redirect_arcs = OriginalArcs;
     ConflictResolution find_conflicts = MultipleConflicts;
     int largest_conflicts_limit = 5;
@@ -111,7 +111,7 @@ struct Options{
     bool use_clique_in_ordering = false;
     int clique_num_branches = -1;
     int verbosity_frequency = 0;
-    int size_limit = 10;//in million nodes
+    int size_limit = 1;//in million nodes
     int MIP_emphasis = 0;
     int num_cores = 1;
     std::string exact_ip_file;
