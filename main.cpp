@@ -41,6 +41,7 @@ void print_help(){
     std::cout<<"-e|--emphasis arg       :Changes the emphasis of CPLEX for the MIP on the exact decision diagram."<<std::endl;
     std::cout<<"-t|--threads arg        :Changes the number of allowed threads for CPLEX to use. If larger than 1, solving will be opportunistic."<<std::endl;
     std::cout<<"-w|--write_ip_file arg  : Write an IP file in 'lp' format if the exact method is chosen to the given filename." << std::endl;
+    std::cout<<"-n|--no_solving         : Do not solve LPs/IPs (for use inconjunction with -w)." << std::endl;
 }
 
 #define MAX_PNAME_LEN 128
@@ -100,12 +101,13 @@ int main(int argc, char *argv[]) {
             {"randomness",      no_argument,       nullptr, 'z'},
             {"verbosity",       required_argument, nullptr, 'v'},
             {"size_limit",      required_argument, nullptr, 's'},
-            {"emphasis",       required_argument, nullptr, 'e'},
-            {"threads",        required_argument, nullptr, 't'},
+            {"emphasis",        required_argument, nullptr, 'e'},
+            {"threads",         required_argument, nullptr, 't'},
             {"write_ip_file",   optional_argument, nullptr, 'w'},
+            {"no_solving",      optional_argument, nullptr, 'n'},
     };
     Options dd_settings{};
-    std::string short_opt = "hap::k::zc:o:r:l:m:d:f:v:s:w:";
+    std::string short_opt = "hap::k::zc:o:r:l:m:d:f:v:s:w:n";
     short_opt += "e:t:";
     while((opt = getopt_long(argc, argv, short_opt.c_str(), long_options, &option_index)) != -1){
         switch(opt){
@@ -133,6 +135,8 @@ int main(int argc, char *argv[]) {
                 }
                 std::cout << "Method is" << dd_settings.algorithm << std::endl;
                 break;
+           case 'n':
+                dd_settings.no_solving = true;
             case 'a':
                 dd_settings.redirect_arcs = RedirectArcs::MostSimilarNode;
                 break;

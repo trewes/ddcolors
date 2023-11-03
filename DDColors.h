@@ -115,6 +115,7 @@ struct Options{
     int MIP_emphasis = 0;
     int num_cores = 1;
     std::string exact_ip_file;
+    bool no_solving = false;
 };
 
 /*
@@ -159,6 +160,7 @@ public:
 
     double get_fractional_chromatic_number() const {return fractional_chromatic;}
 
+    const Options& options() const {return opt;}
 private:
     Graph graph;
     NeighborList neighbors;

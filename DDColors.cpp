@@ -205,7 +205,8 @@ int DDColors::run() {
         COLORset_dbg_lvl(2);
 
         if(opt.algorithm == Options::ExactCompilation) {
-          double ip_flow = compute_flow_solution(dd, IP, upper_bound, opt.formulation, opt.num_cores, opt.MIP_emphasis,opt.exact_ip_file);
+          double ip_flow = compute_flow_solution(dd, IP, upper_bound, opt.formulation, opt.num_cores, opt.MIP_emphasis,opt.exact_ip_file, opt.no_solving);
+          if (opt.no_solving) {std::cout << "Exiting w/o solving flow problem." << std::endl; exit(0);}
           lower_bound = int(std::round(ip_flow));
           stats.num_ip_solved = 1;
 
