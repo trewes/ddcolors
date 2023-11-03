@@ -163,7 +163,7 @@ private:
     Graph graph;
     NeighborList neighbors;
     Permutation graph_ordering;
-    const Options& opt;
+    const Options opt;
     Statistics stats;
     int lower_bound = 0;
     int upper_bound = std::numeric_limits<int>::max();
