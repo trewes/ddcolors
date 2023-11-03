@@ -74,7 +74,7 @@ ENDIF()
 
 
 FIND_PATH(CPLEX_INCLUDE_DIR
-        /cplex.h
+        ilcplex/cplex.h
         HINTS ${CPLEX_ROOT_DIR}/cplex/include
         ${CPLEX_ROOT_DIR}/include
         PATHS ENV C_INCLUDE_PATH
