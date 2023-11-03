@@ -1,3 +1,4 @@
+# This file is based on
 # Source: https://github.com/martinsch/pgmlink
 
 # This module finds cplex.
@@ -73,7 +74,7 @@ ENDIF()
 
 
 FIND_PATH(CPLEX_INCLUDE_DIR
-        ilcplex/cplex.h
+        /cplex.h
         HINTS ${CPLEX_ROOT_DIR}/cplex/include
         ${CPLEX_ROOT_DIR}/include
         PATHS ENV C_INCLUDE_PATH
@@ -82,54 +83,20 @@ FIND_PATH(CPLEX_INCLUDE_DIR
         )
 MESSAGE(STATUS "CPLEX Include Dir: ${CPLEX_INCLUDE_DIR}")
 
-FIND_PATH(CPLEX_CONCERT_INCLUDE_DIR
-        ilconcert/iloenv.h
-        HINTS ${CPLEX_ROOT_DIR}/concert/include
-        ${CPLEX_ROOT_DIR}/include
-        PATHS ENV C_INCLUDE_PATH
-        ENV C_PLUS_INCLUDE_PATH
-        ENV INCLUDE_PATH
-        )
-MESSAGE(STATUS "CONCERT Include Dir: ${CPLEX_CONCERT_INCLUDE_DIR}")
 
 FIND_LIBRARY(CPLEX_LIBRARY
-        NAMES cplex${CPLEX_WIN_VERSION} cplex
-        HINTS ${CPLEX_ROOT_DIR}/cplex/lib/${CPLEX_WIN_PLATFORM} #windows
-        ${CPLEX_ROOT_DIR}/cplex/lib/x86-64_debian4.0_4.1/static_pic #unix
-        ${CPLEX_ROOT_DIR}/cplex/lib/x86-64_sles10_4.1/static_pic #unix
-        ${CPLEX_ROOT_DIR}/cplex/lib/x86-64_linux/static_pic #unix
-        ${CPLEX_ROOT_DIR}/cplex/lib/x86-64_osx/static_pic #osx
-        ${CPLEX_ROOT_DIR}/cplex/lib/x86-64_darwin/static_pic #osx
+        NAMES  cplex
+        HINTS ${CPLEX_ROOT_DIR}//lib/${CPLEX_WIN_PLATFORM} #windows
+        ${CPLEX_ROOT_DIR}/lib/x86-64_debian4.0_4.1/static_pic #unix
+        ${CPLEX_ROOT_DIR}/lib/x86-64_sles10_4.1/static_pic #unix
+        ${CPLEX_ROOT_DIR}/lib/x86-64_linux/static_pic #unix
+        ${CPLEX_ROOT_DIR}/lib/x86-64_osx/static_pic #osx
+        ${CPLEX_ROOT_DIR}/lib/x86-64_darwin/static_pic #osx
         PATHS ENV LIBRARY_PATH #unix
         ENV LD_LIBRARY_PATH #unix
         )
 MESSAGE(STATUS "CPLEX Library: ${CPLEX_LIBRARY}")
 
-FIND_LIBRARY(CPLEX_ILOCPLEX_LIBRARY
-        ilocplex
-        HINTS ${CPLEX_ROOT_DIR}/cplex/lib/${CPLEX_WIN_PLATFORM} #windows
-        ${CPLEX_ROOT_DIR}/cplex/lib/x86-64_debian4.0_4.1/static_pic #unix
-        ${CPLEX_ROOT_DIR}/cplex/lib/x86-64_sles10_4.1/static_pic #unix
-        ${CPLEX_ROOT_DIR}/cplex/lib/x86-64_linux/static_pic #unix
-        ${CPLEX_ROOT_DIR}/cplex/lib/x86-64_osx/static_pic #osx
-        ${CPLEX_ROOT_DIR}/cplex/lib/x86-64_darwin/static_pic #osx
-        PATHS ENV LIBRARY_PATH
-        ENV LD_LIBRARY_PATH
-        )
-MESSAGE(STATUS "ILOCPLEX Library: ${CPLEX_ILOCPLEX_LIBRARY}")
-
-FIND_LIBRARY(CPLEX_CONCERT_LIBRARY
-        concert
-        HINTS ${CPLEX_ROOT_DIR}/concert/lib/${CPLEX_WIN_PLATFORM} #windows
-        ${CPLEX_ROOT_DIR}/concert/lib/x86-64_debian4.0_4.1/static_pic #unix
-        ${CPLEX_ROOT_DIR}/concert/lib/x86-64_sles10_4.1/static_pic #unix
-        ${CPLEX_ROOT_DIR}/concert/lib/x86-64_linux/static_pic #unix
-        ${CPLEX_ROOT_DIR}/concert/lib/x86-64_osx/static_pic #osx
-        ${CPLEX_ROOT_DIR}/concert/lib/x86-64_darwin/static_pic #osx
-        PATHS ENV LIBRARY_PATH
-        ENV LD_LIBRARY_PATH
-        )
-MESSAGE(STATUS "CONCERT Library: ${CPLEX_CONCERT_LIBRARY}")
 
 IF(WIN32)
     FIND_PATH(CPLEX_BIN_DIR
@@ -152,14 +119,14 @@ MESSAGE(STATUS "CPLEX Bin Dir: ${CPLEX_BIN_DIR}")
 
 INCLUDE(FindPackageHandleStandardArgs)
 FIND_PACKAGE_HANDLE_STANDARD_ARGS(CPLEX DEFAULT_MSG
-        CPLEX_LIBRARY CPLEX_INCLUDE_DIR CPLEX_ILOCPLEX_LIBRARY CPLEX_CONCERT_LIBRARY CPLEX_CONCERT_INCLUDE_DIR)
+    CPLEX_LIBRARY CPLEX_INCLUDE_DIR)
 
 IF(CPLEX_FOUND)
-    SET(CPLEX_INCLUDE_DIRS ${CPLEX_INCLUDE_DIR} ${CPLEX_CONCERT_INCLUDE_DIR})
-    SET(CPLEX_LIBRARIES ${CPLEX_CONCERT_LIBRARY} ${CPLEX_ILOCPLEX_LIBRARY} ${CPLEX_LIBRARY} )
+    SET(CPLEX_INCLUDE_DIRS ${CPLEX_INCLUDE_DIR})
+    SET(CPLEX_LIBRARIES ${CPLEX_LIBRARY} )
     IF(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         SET(CPLEX_LIBRARIES "${CPLEX_LIBRARIES};m;pthread")
     ENDIF(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 ENDIF(CPLEX_FOUND)
 
-MARK_AS_ADVANCED(CPLEX_LIBRARY CPLEX_INCLUDE_DIR CPLEX_ILOCPLEX_LIBRARY CPLEX_CONCERT_INCLUDE_DIR CPLEX_CONCERT_LIBRARY)
+MARK_AS_ADVANCED(CPLEX_LIBRARY CPLEX_INCLUDE_DIR)
