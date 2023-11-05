@@ -160,6 +160,7 @@ void Graph::read_dimacs(const char *filename) {
     }
     std::string p, edge;
     int n, e;
+    int real_ecount = 0;
     std::stringstream ss(line);
     ss >> p >> edge >> n >> e;                                                       //read in number of nodes and edges
 
@@ -168,26 +169,36 @@ void Graph::read_dimacs(const char *filename) {
     _elist.reserve(2 * _ecount);
 
     std::getline(file, line);
-    while(line[0] == 'n'){
+    do{
+
+      if(line[0] == 'n'){
         std::cout << "The dimacs file is specifying colors of vertices, these will be ignored for this problem."
                   << std::endl;
-        std::getline(file, line);
-    }
+      }
+      if(line[0] == 'c' or line[0] == '\r' or
+         line[0] == '\0'){          //special character to account for empty lines
+      }
 
-    char first;
-    int head, tail;
-    do{
-        while(line[0] == 'c' or line[0] == '\r' or
-              line[0] == '\0'){          //special character to account for empty lines
-            std::getline(file, line);                                                           //ignore comments
+      if(line[0] == 'e'){
+        char first;
+        int head, tail;
+        real_ecount++;
+        if (real_ecount > _ecount) {
+                std::cout << "Expected " << _ecount << " edges but found " << real_ecount << "!" << std::endl;
         }
+
         ss.clear();
         ss.str(std::string());
         ss << line;
         ss >> first >> head >> tail;
         _elist.push_back(head);
         _elist.push_back(tail);
+      }
     } while(std::getline(file, line));
+    if (real_ecount < _ecount){
+      std::cout << "Correcting _ecount from " << _ecount << " to  " << real_ecount << " based on found edges!" << std::endl;
+      _ecount = real_ecount;
+    }
 }
 
 void Graph::read_graph6(const char *filename) {
@@ -1004,10 +1015,3 @@ std::vector<Vertex> Graph::find_clique(int nrbranches) const {
     }
     return {};
 }
-
-
-
-
-
-
-

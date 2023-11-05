@@ -111,7 +111,7 @@ struct Options{
     bool use_clique_in_ordering = false;
     int clique_num_branches = -1;
     int verbosity_frequency = 0;
-    int size_limit = 1;//in million nodes
+    int size_limit = 5;//in million nodes
     int MIP_emphasis = 0;
     int num_cores = 1;
     std::string exact_ip_file;
