@@ -1,3 +1,6 @@
+This code was written by Timo Brand with minor modifications by Stephan Held.
+It is released under the MIT License (see LICENSE file).
+
 # ddcolors
 My reimplementation of van Hoeve's graph coloring algorithm using decision diagrams.
 This was the work and topic of my Bachelor Thesis.
